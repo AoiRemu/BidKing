@@ -270,12 +270,22 @@ class MainWindow(QMainWindow):
         box = QGroupBox("输出 (动态联动)")
         v = QVBoxLayout(box)
 
+        hint = QLabel(
+            "候选解释: 紫总格数 = 道具看到的紫色物品占据的总格子数; "
+            "紫物品数 = 紫色物品个数。\n"
+            "(同一个紫色平均值 c 可能对应多组 (紫总格数, 紫物品数), 这里列出最接近你预估的几个)"
+        )
+        hint.setStyleSheet("color: #555; font-size: 9pt;")
+        hint.setWordWrap(True)
+        v.addWidget(hint)
+
         self.candidates_group = QButtonGroup(self)
         self.candidates_group.setExclusive(True)
-        self.candidates_group.idToggled.connect(lambda *_: self._on_field_changed())
+        self.candidates_group.idToggled.connect(self._on_candidate_toggled)
         self.candidates_container = QVBoxLayout()
         self.candidates_container.setSpacing(4)
         v.addLayout(self.candidates_container)
+        self._cached_candidates: list[dict[str, Any]] = []
 
         self.lbl_gold_red = QLabel("金红剩余格数: —")
         self.lbl_estimate = QLabel("预估仓库总价: —")
@@ -557,26 +567,38 @@ class MainWindow(QMainWindow):
             self.status_bar.clearMessage()
 
     def _render_candidates(self, candidates: list[dict[str, Any]]) -> None:
-        # 清空旧的 radio
+        # 决定选中哪一个: 优先用当前按钮组的状态, 否则用 record 里的 selected_idx
+        current_sel = self.candidates_group.checkedId()
+        if current_sel < 0:
+            current_sel = int(self.current_record.get("predicted", {}).get("selected_idx", 0) or 0)
+        if not candidates:
+            current_sel = -1
+        elif current_sel < 0 or current_sel >= len(candidates):
+            current_sel = 0
+
+        # 候选列表内容没变 → 只更新汇总, 不重建按钮 (避免点击被冲掉)
+        if self._candidates_equal(self._cached_candidates, candidates):
+            self._update_summary(candidates, current_sel)
+            return
+
+        # 重建按钮
+        # 先从 group 移除旧按钮, 再清空 layout
+        for btn in self.candidates_group.buttons():
+            self.candidates_group.removeButton(btn)
         for i in reversed(range(self.candidates_container.count())):
             item = self.candidates_container.takeAt(i)
             w = item.widget()
             if w is not None:
-                self.candidates_group.removeButton(w) if isinstance(w, QRadioButton) else None
                 w.deleteLater()
 
+        self._cached_candidates = [dict(c) for c in candidates]
+
         if not candidates:
-            placeholder = QLabel("(填入输入后会显示紫色 (a, b) 候选)")
+            placeholder = QLabel("(填入输入后会显示紫色 (总格数, 物品数) 候选)")
             placeholder.setStyleSheet("color: #888;")
             self.candidates_container.addWidget(placeholder)
-            self.lbl_gold_red.setText("金红剩余格数: —")
-            self.lbl_estimate.setText("预估仓库总价: —")
+            self._update_summary([], -1)
             return
-
-        # 选中的候选 index 从 current_record 读取
-        selected_idx = int(self.current_record.get("predicted", {}).get("selected_idx", 0) or 0)
-        if selected_idx >= len(candidates):
-            selected_idx = 0
 
         for idx, cand in enumerate(candidates):
             a = cand["purple_total_grids"]
@@ -584,25 +606,51 @@ class MainWindow(QMainWindow):
             gr = cand["gold_red_grids"]
             ev = cand.get("estimated_value")
             err = cand.get("error")
-            label = f"a={a:>3}  b={b:>3}  → 金红剩余 {gr:>3} 格  → 估值 {_fmt_money(ev)}"
+            label = (
+                f"紫总 {a:>3} 格 / 紫物品 {b:>3} 件   →   "
+                f"金红剩余 {gr:>3} 格   →   估值 {_fmt_money(ev)}"
+            )
             if err:
                 label += f"   ❌ {err}"
             rb = QRadioButton(label)
             rb.setProperty("cand_idx", idx)
-            if idx == selected_idx:
+            if idx == current_sel:
                 rb.setChecked(True)
             self.candidates_group.addButton(rb, idx)
             self.candidates_container.addWidget(rb)
 
-        # 更新汇总显示
-        sel_cand = candidates[selected_idx]
-        gr = sel_cand["gold_red_grids"]
-        ev = sel_cand.get("estimated_value")
+        self._update_summary(candidates, current_sel)
+
+    @staticmethod
+    def _candidates_equal(a: list[dict[str, Any]], b: list[dict[str, Any]]) -> bool:
+        if len(a) != len(b):
+            return False
+        keys = ("purple_total_grids", "purple_count", "gold_red_grids", "estimated_value", "error")
+        for x, y in zip(a, b):
+            for k in keys:
+                if x.get(k) != y.get(k):
+                    return False
+        return True
+
+    def _update_summary(self, candidates: list[dict[str, Any]], sel_idx: int) -> None:
+        if not candidates or sel_idx < 0 or sel_idx >= len(candidates):
+            self.lbl_gold_red.setText("金红剩余格数: —")
+            self.lbl_estimate.setText("预估仓库总价: —")
+            return
+        cand = candidates[sel_idx]
         self.lbl_gold_red.setText(
-            f"金红剩余格数: {gr}    "
-            f"(紫总 {sel_cand['purple_total_grids']} 格 / {sel_cand['purple_count']} 件)"
+            f"金红剩余格数: {cand['gold_red_grids']}    "
+            f"(紫总 {cand['purple_total_grids']} 格 / 紫物品 {cand['purple_count']} 件)"
         )
-        self.lbl_estimate.setText(f"预估仓库总价: {_fmt_money(ev)}")
+        self.lbl_estimate.setText(f"预估仓库总价: {_fmt_money(cand.get('estimated_value'))}")
+
+    def _on_candidate_toggled(self, btn_id: int, checked: bool) -> None:
+        # 只在 "成为选中" 时响应, 避免每次点击触发两遍 (取消+选中)
+        if not checked:
+            return
+        self._update_summary(self._cached_candidates, btn_id)
+        self.current_record.setdefault("predicted", {})["selected_idx"] = btn_id
+        self._save_timer.start()
 
     def _check_consistency(self) -> None:
         # 各色总价 vs 仓库总价
