@@ -1,0 +1,22 @@
+[
+  {"id": 101, "name": "法蒂玛", "tier": "T0", "specialty": "文玩古董专精"},
+  {"id": 102, "name": "陈美", "tier": "T2", "specialty": "珠宝+时尚"},
+  {"id": 103, "name": "艾莎", "tier": "T1", "specialty": "蓝/绿/白逆向筛选"},
+  {"id": 104, "name": "加布里埃拉", "tier": "T0", "specialty": "全盲揭示"},
+  {"id": 105, "name": "塔蒂安娜", "tier": "T2", "specialty": "时尚潮流"},
+  {"id": 106, "name": "娜奥米", "tier": "T1", "specialty": "时尚+数码 + 金红数量"},
+  {"id": 107, "name": "索菲", "tier": "T0", "specialty": "品质透视"},
+  {"id": 108, "name": "玛丽亚", "tier": "T2", "specialty": "白绿蓝估价"},
+  {"id": 109, "name": "海琳娜", "tier": "T2", "specialty": "医疗专场"},
+  {"id": 110, "name": "伊莎贝拉", "tier": "T2", "specialty": "珠宝轮廓"},
+  {"id": 201, "name": "乔治", "tier": "T2", "specialty": "武器装备"},
+  {"id": 202, "name": "卡洛斯", "tier": "T2", "specialty": "家居+数码"},
+  {"id": 203, "name": "莱昂纳德", "tier": "T2", "specialty": "食品+古董"},
+  {"id": 204, "name": "艾哈迈德", "tier": "T0", "specialty": "格数统计分析"},
+  {"id": 205, "name": "伊万", "tier": "T1", "specialty": "武器+交通"},
+  {"id": 206, "name": "武田宏志", "tier": "T2", "specialty": "书画专场"},
+  {"id": 207, "name": "吴起灵", "tier": "T1", "specialty": "古董专精"},
+  {"id": 208, "name": "伊森", "tier": "T1", "specialty": "5回合全揭示"},
+  {"id": 209, "name": "维克托", "tier": "T1", "specialty": "紫+金数量"},
+  {"id": 301, "name": "拉文", "tier": "F", "specialty": "AI 弱势英雄，前4回合全盲"}
+]

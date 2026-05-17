@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(grill-me)",
+      "Bash(uv --version)",
+      "Bash(.venv/Scripts/python.exe --version)",
+      "Bash(uv add *)",
+      "Bash(uv sync *)"
+    ]
+  }
+}
