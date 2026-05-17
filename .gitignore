@@ -9,6 +9,10 @@ wheels/
 # Virtual environments
 .venv
 
+# PyInstaller build artifacts
+BidKing.exe
+BidKing.pkg
+
 # BidKing runtime data
 records.jsonl
 records.jsonl.bak
