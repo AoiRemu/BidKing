@@ -69,7 +69,6 @@ def _make_int_spin(maximum: int = 99_999_999, group_sep: bool = True) -> QSpinBo
     sb.setRange(0, maximum)
     sb.setGroupSeparatorShown(group_sep)
     sb.setAlignment(Qt.AlignmentFlag.AlignRight)
-    sb.setSpecialValueText(" ")  # 0 显示空
     return sb
 
 
@@ -84,7 +83,6 @@ def _make_float_spin(decimals: int = 2, maximum: float = 999.99) -> QDoubleSpinB
     sb.setRange(0.0, maximum)
     sb.setSingleStep(0.01)
     sb.setAlignment(Qt.AlignmentFlag.AlignRight)
-    sb.setSpecialValueText(" ")
     return sb
 
 
