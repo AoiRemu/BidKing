@@ -300,24 +300,28 @@ class MainWindow(QMainWindow):
         self.in_T = _make_int_spin(maximum=999, group_sep=False, width=80)
         self.in_B = _make_int_spin(maximum=999, group_sep=False, width=80)
         self.in_WG = _make_int_spin(maximum=999, group_sep=False, width=80)
-        # 紫色四件套 (全部可选, 至少给一个)
+        # 紫色五件套 (全部可选)
         self.in_purple_avg = _make_float_spin(decimals=2, maximum=99.99, width=80)
         self.in_purple_count_est = _make_int_spin(maximum=999, group_sep=False, width=80)
         self.in_purple_total_grids = _make_int_spin(maximum=999, group_sep=False, width=80)
         self.in_purple_count = _make_int_spin(maximum=999, group_sep=False, width=80)
-        # 金色四件套
+        self.in_purple_total_value = _make_money_spin(width=130)
+        # 金色五件套
         self.in_gold_avg = _make_float_spin(decimals=2, maximum=99.99, width=80)
         self.in_gold_count_est = _make_int_spin(maximum=999, group_sep=False, width=80)
         self.in_gold_total_grids = _make_int_spin(maximum=999, group_sep=False, width=80)
         self.in_gold_count = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.in_gold_total_value = _make_money_spin(width=130)
 
         _tint_spin(self.in_B, "blue")
         _tint_spin(self.in_WG, "wg")
         for w in (self.in_purple_avg, self.in_purple_count_est,
-                  self.in_purple_total_grids, self.in_purple_count):
+                  self.in_purple_total_grids, self.in_purple_count,
+                  self.in_purple_total_value):
             _tint_spin(w, "purple")
         for w in (self.in_gold_avg, self.in_gold_count_est,
-                  self.in_gold_total_grids, self.in_gold_count):
+                  self.in_gold_total_grids, self.in_gold_count,
+                  self.in_gold_total_value):
             _tint_spin(w, "gold")
 
         defaults = self.config.get_strategy_defaults(
@@ -348,9 +352,9 @@ class MainWindow(QMainWindow):
         for w in (
             self.in_T, self.in_B, self.in_WG,
             self.in_purple_avg, self.in_purple_count_est,
-            self.in_purple_total_grids, self.in_purple_count,
+            self.in_purple_total_grids, self.in_purple_count, self.in_purple_total_value,
             self.in_gold_avg, self.in_gold_count_est,
-            self.in_gold_total_grids, self.in_gold_count,
+            self.in_gold_total_grids, self.in_gold_count, self.in_gold_total_value,
             self.in_v_wg, self.in_v_b, self.in_v_p, self.in_v_jr, self.in_v_g, self.in_v_r,
         ):
             w.valueChanged.connect(self._on_field_changed)
@@ -373,13 +377,15 @@ class MainWindow(QMainWindow):
         self.in_purple_count_est.setToolTip("紫色物品数预估 b_est, 主观判断")
         self.in_purple_total_grids.setToolTip("紫色总格数 a_p (优品扫描 道具, 2500银)")
         self.in_purple_count.setToolTip("紫色物品数 b_p (优品存量 道具, 2500银)")
+        self.in_purple_total_value.setToolTip("紫色总价值 (优品估价 道具, 2500银)")
         self.in_gold_avg.setToolTip("金色平均格数 c_g (极品均格 道具, 10000银)")
         self.in_gold_count_est.setToolTip("金色物品数预估 b_est, 主观判断")
         self.in_gold_total_grids.setToolTip("金色总格数 a_g (极品扫描 道具, 10000银)")
         self.in_gold_count.setToolTip("金色物品数 b_g (极品存量 道具, 10000银)")
+        self.in_gold_total_value.setToolTip("金色总价值 (极品估价 道具, 10000银)")
 
         # 紫色 (一行排列)
-        p_box = QGroupBox("紫色 (任意组合即可反推)")
+        p_box = QGroupBox("紫色 (任意组合即可反推; 给越多, 范围越窄)")
         _tint_groupbox(p_box, "purple")
         p_h = QHBoxLayout(p_box)
         p_h.addWidget(QLabel("平均格数:"))
@@ -393,11 +399,14 @@ class MainWindow(QMainWindow):
         p_h.addSpacing(8)
         p_h.addWidget(QLabel("件数:"))
         p_h.addWidget(self.in_purple_count)
+        p_h.addSpacing(8)
+        p_h.addWidget(QLabel("总价值:"))
+        p_h.addWidget(self.in_purple_total_value)
         p_h.addStretch()
         form.addRow(p_box)
 
         # 金色 (一行排列)
-        g_box = QGroupBox("金色 (可选, 任意组合)")
+        g_box = QGroupBox("金色 (可选; 任意组合)")
         _tint_groupbox(g_box, "gold")
         g_h = QHBoxLayout(g_box)
         g_h.addWidget(QLabel("平均格数:"))
@@ -411,6 +420,9 @@ class MainWindow(QMainWindow):
         g_h.addSpacing(8)
         g_h.addWidget(QLabel("件数:"))
         g_h.addWidget(self.in_gold_count)
+        g_h.addSpacing(8)
+        g_h.addWidget(QLabel("总价值:"))
+        g_h.addWidget(self.in_gold_total_value)
         g_h.addStretch()
         form.addRow(g_box)
 
@@ -594,10 +606,12 @@ class MainWindow(QMainWindow):
             self.in_purple_count_est.setValue(int(inputs.get("purple_count_est") or 0))
             self.in_purple_total_grids.setValue(int(inputs.get("purple_total_grids") or 0))
             self.in_purple_count.setValue(int(inputs.get("purple_count") or 0))
+            self.in_purple_total_value.setValue(int(inputs.get("purple_total_value") or 0))
             self.in_gold_avg.setValue(float(inputs.get("gold_avg") or 0.0))
             self.in_gold_count_est.setValue(int(inputs.get("gold_count_est") or 0))
             self.in_gold_total_grids.setValue(int(inputs.get("gold_total_grids") or 0))
             self.in_gold_count.setValue(int(inputs.get("gold_count") or 0))
+            self.in_gold_total_value.setValue(int(inputs.get("gold_total_value") or 0))
 
             defaults = self.config.get_strategy_defaults(
                 self.current_strategy.name, self.current_strategy.defaults
@@ -856,10 +870,12 @@ class MainWindow(QMainWindow):
             "purple_count_est": self.in_purple_count_est.value() or None,
             "purple_total_grids": self.in_purple_total_grids.value() or None,
             "purple_count": self.in_purple_count.value() or None,
+            "purple_total_value": self.in_purple_total_value.value() or None,
             "gold_avg": self.in_gold_avg.value() or None,
             "gold_count_est": self.in_gold_count_est.value() or None,
             "gold_total_grids": self.in_gold_total_grids.value() or None,
             "gold_count": self.in_gold_count.value() or None,
+            "gold_total_value": self.in_gold_total_value.value() or None,
             "v_wg": self.in_v_wg.value() or None,
             "v_b": self.in_v_b.value() or None,
             "v_p": self.in_v_p.value() or None,
@@ -917,7 +933,13 @@ class MainWindow(QMainWindow):
         rec["actual"] = self._collect_actual()
         rec["note"] = self.note_edit.toPlainText().strip()
 
-        self.store.upsert(rec)
+        try:
+            self.store.upsert(rec)
+        except OSError as e:
+            self.status_bar.showMessage(
+                f"⚠ 保存失败 (文件可能被占用, 请关闭外部编辑器): {e}", 5000
+            )
+            return
 
         # 持久化价格默认值（每次价格改了就同步保存）
         self.config.set_strategy_defaults(

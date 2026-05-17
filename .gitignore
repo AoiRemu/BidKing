@@ -11,6 +11,8 @@ wheels/
 
 # BidKing runtime data
 records.jsonl
+records.jsonl.bak
+records.jsonl.tmp
 config.json
 *.log
 screenshots/

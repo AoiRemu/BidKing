@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -60,6 +62,17 @@ class RecordStore:
         self.path = Path(path)
         self._records: dict[str, dict[str, Any]] = {}
         self._load()
+        # 启动时滚动备份: records.jsonl.bak (覆盖)
+        self._rotate_startup_backup()
+
+    def _rotate_startup_backup(self) -> None:
+        if not self.path.exists():
+            return
+        bak = self.path.with_suffix(self.path.suffix + ".bak")
+        try:
+            shutil.copyfile(self.path, bak)
+        except OSError:
+            pass  # 备份失败不致命
 
     def _load(self) -> None:
         if not self.path.exists():
@@ -83,7 +96,21 @@ class RecordStore:
         with tmp.open("w", encoding="utf-8") as f:
             for rec in self._records.values():
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        os.replace(tmp, self.path)
+        # Windows: 目标文件被其他进程锁住时 os.replace 会拒绝访问。
+        # 重试若干次再放弃。
+        last_err: OSError | None = None
+        for delay in (0, 0.05, 0.1, 0.2, 0.5):
+            if delay:
+                time.sleep(delay)
+            try:
+                os.replace(tmp, self.path)
+                return
+            except PermissionError as e:
+                last_err = e
+                continue
+        # 都失败: 留下 .tmp 不替换, 抛错给调用方
+        if last_err is not None:
+            raise last_err
 
     def upsert(self, record: dict[str, Any]) -> None:
         rid = record.get("record_id")

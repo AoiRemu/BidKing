@@ -62,7 +62,7 @@ find_purple_candidates = find_candidates  # 旧名兼容
 
 
 def pick_nearest_candidates(
-    candidates: list[tuple[int, int]], b_est: int, k: int = 3
+    candidates: list[tuple[int, int]], b_est: int, k: int = 6
 ) -> list[tuple[int, int]]:
     if not candidates:
         return []
@@ -76,6 +76,7 @@ def _determine_candidates(
     b_est: int | None,
     grid_key: str,
     count_key: str,
+    k: int = 6,
 ) -> list[dict[str, int]]:
     """根据某品质的多个可选输入, 返回该品质的 (总格数, 物品数) 候选 list。
 
@@ -96,7 +97,7 @@ def _determine_candidates(
             if matching:
                 return [{grid_key: aa, count_key: bb} for (aa, bb) in matching]
             return []
-        picked = pick_nearest_candidates(all_c, b_est or 1, 3)
+        picked = pick_nearest_candidates(all_c, b_est or 1, k=k)
         return [{grid_key: aa, count_key: bb} for (aa, bb) in picked]
 
     return []
@@ -145,6 +146,7 @@ class GridActuarial(StrategyBase):
         purple_candidates = _determine_candidates(
             a_p, b_p, c_p, b_p_est,
             grid_key="purple_total_grids", count_key="purple_count",
+            k=6,
         )
         gold_enabled = (
             a_g is not None or (c_g is not None and c_g > 0) or b_g is not None
@@ -154,6 +156,7 @@ class GridActuarial(StrategyBase):
             gold_candidates = _determine_candidates(
                 a_g, b_g, c_g, b_g_est,
                 grid_key="gold_total_grids", count_key="gold_count",
+                k=5,
             )
 
         if not purple_candidates:
@@ -197,6 +200,8 @@ class GridActuarial(StrategyBase):
         """按选中的 (紫, 金) 候选计算单点估值。
 
         gold_cand=None → 金红混合 (v_jr); 否则 → 拆分 (v_g + v_r)。
+        若用户提供 purple_total_value / gold_total_value (优品估价 / 极品估价 道具),
+        则覆盖该品质的 a × v 估算。
         """
         T = _to_int(inputs.get("T")) or 0
         B = _to_int(inputs.get("B")) or 0
@@ -207,6 +212,8 @@ class GridActuarial(StrategyBase):
         v_jr = _to_float(inputs.get("v_jr")) or 0.0
         v_g = _to_float(inputs.get("v_g")) or 0.0
         v_r = _to_float(inputs.get("v_r")) or 0.0
+        p_total_value = _to_float(inputs.get("purple_total_value"))
+        g_total_value = _to_float(inputs.get("gold_total_value"))
 
         if purple_cand is None:
             return {
@@ -219,13 +226,16 @@ class GridActuarial(StrategyBase):
         a_p = purple_cand["purple_total_grids"]
         gold_red = T - B - WG - a_p
 
+        purple_value = p_total_value if (p_total_value is not None and p_total_value > 0) else a_p * v_p
+
         if gold_cand is not None:
             a_g = gold_cand["gold_total_grids"]
             a_r = gold_red - a_g
             err = None
             if a_r < 0:
                 err = f"红色格数 = {a_r} < 0, 紫+金已超额"
-            value = WG * v_wg + B * v_b + a_p * v_p + a_g * v_g + max(a_r, 0) * v_r
+            gold_value = g_total_value if (g_total_value is not None and g_total_value > 0) else a_g * v_g
+            value = WG * v_wg + B * v_b + purple_value + gold_value + max(a_r, 0) * v_r
             return {
                 "purple_grids": a_p, "gold_grids": a_g, "red_grids": a_r,
                 "gold_red_grids": gold_red, "estimated_value": value,
@@ -235,7 +245,7 @@ class GridActuarial(StrategyBase):
             err = None
             if gold_red < 0:
                 err = f"金红剩余 = {gold_red} < 0, 紫色已超额"
-            value = WG * v_wg + B * v_b + a_p * v_p + max(gold_red, 0) * v_jr
+            value = WG * v_wg + B * v_b + purple_value + max(gold_red, 0) * v_jr
             return {
                 "purple_grids": a_p, "gold_grids": 0, "red_grids": 0,
                 "gold_red_grids": gold_red, "estimated_value": value,
