@@ -62,11 +62,41 @@ find_purple_candidates = find_candidates  # 旧名兼容
 
 
 def pick_nearest_candidates(
-    candidates: list[tuple[int, int]], b_est: int, k: int = 6
+    candidates: list[tuple[int, int]], b_est: int, k: int = 6,
+    ensure_b: list[int] | None = None,
 ) -> list[tuple[int, int]]:
+    """Pick k candidates nearest to b_est, with diversity anchors.
+
+    When ensure_b is provided, candidates matching those b values are
+    guaranteed a slot (up to one per anchor value), then remaining slots
+    are filled from the nearest-to-b_est pool.
+    """
     if not candidates:
         return []
-    return sorted(candidates, key=lambda ab: (abs(ab[1] - b_est), ab[1]))[:k]
+    if ensure_b is None:
+        return sorted(candidates, key=lambda ab: (abs(ab[1] - b_est), ab[1]))[:k]
+
+    result: list[tuple[int, int]] = []
+    remaining = list(candidates)
+
+    # Pick one best match per anchor b (closest to b_est among that b value)
+    for anchor in ensure_b:
+        if len(result) >= k:
+            break
+        matches = [(a, b) for (a, b) in remaining if b == anchor]
+        if matches:
+            best = min(matches, key=lambda ab: abs(ab[1] - b_est))
+            result.append(best)
+            remaining.remove(best)
+
+    # Fill rest with nearest to b_est
+    by_est = sorted(remaining, key=lambda ab: (abs(ab[1] - b_est), ab[1]))
+    for c in by_est:
+        if len(result) >= k:
+            break
+        result.append(c)
+
+    return result
 
 
 def _determine_candidates(
@@ -77,6 +107,7 @@ def _determine_candidates(
     grid_key: str,
     count_key: str,
     k: int = 6,
+    ensure_b: list[int] | None = None,
 ) -> list[dict[str, int]]:
     """根据某品质的多个可选输入, 返回该品质的 (总格数, 物品数) 候选 list。
 
@@ -97,7 +128,7 @@ def _determine_candidates(
             if matching:
                 return [{grid_key: aa, count_key: bb} for (aa, bb) in matching]
             return []
-        picked = pick_nearest_candidates(all_c, b_est or 1, k=k)
+        picked = pick_nearest_candidates(all_c, b_est or 1, k=k, ensure_b=ensure_b)
         return [{grid_key: aa, count_key: bb} for (aa, bb) in picked]
 
     return []
@@ -146,7 +177,7 @@ class GridActuarial(StrategyBase):
         purple_candidates = _determine_candidates(
             a_p, b_p, c_p, b_p_est,
             grid_key="purple_total_grids", count_key="purple_count",
-            k=6,
+            k=12, ensure_b=list(range(8, 21)),
         )
         gold_enabled = (
             a_g is not None or (c_g is not None and c_g > 0) or b_g is not None

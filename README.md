@@ -31,12 +31,68 @@ GUI 反推紫色候选：
 
 ---
 
-## 快速开始
+## 小白入门 (从零开始)
+
+不会编程也能跑。跟着做，10 分钟搞定。
+
+### 1. 安装 uv (Python 包管理器)
+
+**Windows:** 按 `Win+R`，输入 `powershell`，回车。粘贴下面这行，回车：
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+**macOS / Linux:** 打开终端，粘贴：
 
 ```bash
-uv sync           # 同步依赖 (Python ≥ 3.14)
-uv run bidking-gui  # 启动 GUI
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
+
+装完 **关掉窗口重开**，让 uv 生效。
+
+### 2. 装 Python
+
+uv 能自己管理 Python，不需要去官网下载：
+
+```bash
+uv python install 3.14
+```
+
+验证: `uv python list` 看到 3.14 就行。
+
+### 3. 下载项目
+
+如果你会用 git：
+
+```bash
+git clone <repo-url>
+cd BidKing
+```
+
+如果不会 git，直接下载项目 zip 包解压，然后在终端里 `cd` 到解压后的 `BidKing` 目录。
+
+> `cd` 怎么用？在 PowerShell/终端里输入 `cd ` (注意空格)，把 BidKing 文件夹拖进窗口，路径自动填上，回车。
+
+### 4. 装依赖 + 启动
+
+```bash
+uv sync
+uv run bidking-gui
+```
+
+GUI 窗口就出来了。以后每次启动只跑 `uv run bidking-gui` 这一句。
+
+### 5. 怎么用
+
+1. 点左上角 **开始新游戏** → 选择伊森
+2. 在游戏里买道具（至少买优品均格、良品扫描、普品扫描这三个），顺便买个
+3. 把道具读数填进 GUI 对应输入框，从总格数开始填，然后蓝色，白绿，紫色就填平均格数
+4. GUI 自动反推所有可能的 (总格数, 物品数) 组合 → 给出仓库价值范围
+5. 根据范围决定出价 → 出价填进「我的出价」
+6. 拍卖结束后把结算截图拖进 GUI → 填仓库总价 → 点 **标记完成**
+
+一条记录就攒下来了。
 
 ## 工作流
 
