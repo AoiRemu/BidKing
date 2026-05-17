@@ -36,31 +36,47 @@ COLUMNS = [
     ("策略", "strategy"),
     ("status", "status"),
     ("出价", "bid"),
-    ("预测", "predicted_value"),
+    ("预测范围", "predicted_range"),
     ("真实", "actual_value"),
     ("偏差%", "diff_pct"),
+    ("注释", "note"),
 ]
 
 
-def _selected_predicted(rec: dict[str, Any]) -> float | None:
+def _selected_predicted(rec: dict[str, Any]) -> tuple[float | None, str]:
+    """返回 (中位估值, 范围字符串)。兼容新旧 schema。"""
     pred = rec.get("predicted") or {}
-    cands = pred.get("candidates") or []
+    vr = pred.get("value_range")
+    if vr:
+        vmin = vr.get("min")
+        vmax = vr.get("max")
+        vmed = vr.get("median")
+        if vmin is not None and vmax is not None:
+            if abs(vmax - vmin) < 1:
+                return vmed, _fmt_money(vmed)
+            return vmed, f"{_fmt_money(vmin)}~{_fmt_money(vmax)}"
+    # 旧 schema (单个 candidates 列表 + selected_idx)
+    cands = pred.get("candidates") or pred.get("purple_candidates") or []
     if not cands:
-        return None
-    idx = int(pred.get("selected_idx") or 0)
+        return None, "—"
+    idx = int(pred.get("selected_idx") or pred.get("selected_purple_idx") or 0)
     if idx >= len(cands):
         idx = 0
-    return cands[idx].get("estimated_value")
+    v = cands[idx].get("estimated_value")
+    return v, _fmt_money(v)
 
 
 def _row_values(rec: dict[str, Any]) -> dict[str, Any]:
-    pv = _selected_predicted(rec)
+    pv, pv_str = _selected_predicted(rec)
     actual = rec.get("actual") or {}
     av = actual.get("total_value")
     bid = rec.get("bid")
     diff = None
     if pv is not None and av:
         diff = (av - pv) / pv * 100.0
+    note = (rec.get("note") or "").strip().replace("\n", " ")
+    if len(note) > 40:
+        note = note[:40] + "..."
     return {
         "timestamp": rec.get("timestamp") or "",
         "session_id": rec.get("session_id") or "",
@@ -69,9 +85,10 @@ def _row_values(rec: dict[str, Any]) -> dict[str, Any]:
         "strategy": rec.get("strategy") or "",
         "status": rec.get("status") or "",
         "bid": _fmt_money(bid),
-        "predicted_value": _fmt_money(pv),
+        "predicted_range": pv_str,
         "actual_value": _fmt_money(av),
         "diff_pct": f"{diff:+.1f}%" if diff is not None else "—",
+        "note": note,
     }
 
 

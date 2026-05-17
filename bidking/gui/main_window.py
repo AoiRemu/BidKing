@@ -53,6 +53,7 @@ from ..storage.records import (
 from ..strategies.grid_actuarial import GridActuarial
 from ..strategies.base import StrategyBase
 from .widgets.red_items_table import RedItemsTable
+from .widgets.screenshot import ScreenshotWidget
 
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -145,7 +146,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("BidKing — 竞拍之王估价")
-        self.resize(1200, 800)
+        self.resize(1400, 800)
 
         self.config = Config(CONFIG_PATH)
         self.store = RecordStore(RECORDS_PATH)
@@ -195,15 +196,8 @@ class MainWindow(QMainWindow):
         left_title = QLabel("估价 (出价前)")
         left_title.setStyleSheet("font-weight: bold; font-size: 12pt; padding: 4px 0;")
         left_v.addWidget(left_title)
-
-        # 元数据 + 输入 并排
-        md_inputs_h = QHBoxLayout()
-        md_inputs_h.setSpacing(8)
-        md_inputs_h.addWidget(self._build_metadata_box(), alignment=Qt.AlignmentFlag.AlignTop)
-        md_inputs_h.addWidget(self._build_inputs_box(), alignment=Qt.AlignmentFlag.AlignTop)
-        md_inputs_h.addStretch()
-        left_v.addLayout(md_inputs_h)
-
+        left_v.addWidget(self._build_metadata_box())
+        left_v.addWidget(self._build_inputs_box())
         left_v.addWidget(self._build_outputs_box())
         left_v.addStretch()
         left_scroll.setWidget(left_w)
@@ -219,14 +213,15 @@ class MainWindow(QMainWindow):
         right_v.addWidget(right_title)
         right_v.addWidget(self._build_actual_box())
         right_v.addWidget(self._build_note_box())
+        right_v.addWidget(self._build_bid_box())
         right_v.addStretch()
         right_scroll.setWidget(right_w)
 
         splitter.addWidget(left_scroll)
         splitter.addWidget(right_scroll)
-        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([800, 380])
+        splitter.setSizes([1080, 300])
         outer_v.addWidget(splitter, stretch=1)
 
         outer_v.addWidget(self._build_bottom_buttons())
@@ -266,46 +261,65 @@ class MainWindow(QMainWindow):
 
     def _build_metadata_box(self) -> QWidget:
         box = QGroupBox("本场元数据")
-        box.setMaximumWidth(380)
-        form = QFormLayout(box)
+        h = QHBoxLayout(box)
+        h.setSpacing(8)
 
         self.map_combo = QComboBox()
         self.map_combo.setEditable(True)
+        self.map_combo.setMinimumWidth(220)
         for m in self.maps:
             self.map_combo.addItem(f"{m['id']} {m['name']} ({m['tier']})", m["id"])
         self.map_combo.setCurrentIndex(-1)
         self.map_combo.currentIndexChanged.connect(self._on_field_changed)
         self.map_combo.editTextChanged.connect(self._on_field_changed)
-        form.addRow("地图:", self.map_combo)
 
         self.hero_combo = QComboBox()
         self.hero_combo.setEditable(True)
-        for h in self.heroes:
-            self.hero_combo.addItem(f"{h['id']} {h['name']} [{h['tier']}]", h["id"])
+        self.hero_combo.setMinimumWidth(220)
+        for hero in self.heroes:
+            self.hero_combo.addItem(
+                f"{hero['id']} {hero['name']} [{hero['tier']}]", hero["id"]
+            )
         self.hero_combo.setCurrentIndex(-1)
         self.hero_combo.currentIndexChanged.connect(self._on_field_changed)
         self.hero_combo.editTextChanged.connect(self._on_field_changed)
-        form.addRow("英雄 (一局沿用):", self.hero_combo)
 
+        h.addWidget(QLabel("地图:"))
+        h.addWidget(self.map_combo)
+        h.addSpacing(16)
+        h.addWidget(QLabel("英雄 (一局沿用):"))
+        h.addWidget(self.hero_combo)
+        h.addStretch()
         return box
 
     def _build_inputs_box(self) -> QWidget:
-        box = QGroupBox("输入 (数格子精算法)")
-        box.setMaximumWidth(420)
+        box = QGroupBox("输入 (数格子精算法) — 任意输入越多, 估值范围越窄")
         form = QFormLayout(box)
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
 
-        self.in_T = _make_int_spin(maximum=999, group_sep=False, width=90)
-        self.in_B = _make_int_spin(maximum=999, group_sep=False, width=90)
-        self.in_WG = _make_int_spin(maximum=999, group_sep=False, width=90)
-        self.in_purple_avg = _make_float_spin(decimals=2, maximum=99.99, width=90)
-        self.in_purple_count_est = _make_int_spin(maximum=999, group_sep=False, width=90)
+        self.in_T = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.in_B = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.in_WG = _make_int_spin(maximum=999, group_sep=False, width=80)
+        # 紫色四件套 (全部可选, 至少给一个)
+        self.in_purple_avg = _make_float_spin(decimals=2, maximum=99.99, width=80)
+        self.in_purple_count_est = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.in_purple_total_grids = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.in_purple_count = _make_int_spin(maximum=999, group_sep=False, width=80)
+        # 金色四件套
+        self.in_gold_avg = _make_float_spin(decimals=2, maximum=99.99, width=80)
+        self.in_gold_count_est = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.in_gold_total_grids = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.in_gold_count = _make_int_spin(maximum=999, group_sep=False, width=80)
 
         _tint_spin(self.in_B, "blue")
         _tint_spin(self.in_WG, "wg")
-        _tint_spin(self.in_purple_avg, "purple")
-        _tint_spin(self.in_purple_count_est, "purple")
+        for w in (self.in_purple_avg, self.in_purple_count_est,
+                  self.in_purple_total_grids, self.in_purple_count):
+            _tint_spin(w, "purple")
+        for w in (self.in_gold_avg, self.in_gold_count_est,
+                  self.in_gold_total_grids, self.in_gold_count):
+            _tint_spin(w, "gold")
 
-        # 默认价格 (从 config 读取，没存过用策略 defaults)
         defaults = self.config.get_strategy_defaults(
             self.current_strategy.name, self.current_strategy.defaults
         )
@@ -314,34 +328,104 @@ class MainWindow(QMainWindow):
         self.in_v_b = _make_money_spin()
         self.in_v_p = _make_money_spin()
         self.in_v_jr = _make_money_spin()
+        self.in_v_g = _make_money_spin()
+        self.in_v_r = _make_money_spin()
         _tint_spin(self.in_v_wg, "wg")
         _tint_spin(self.in_v_b, "blue")
         _tint_spin(self.in_v_p, "purple")
         _tint_spin(self.in_v_jr, "jr")
+        _tint_spin(self.in_v_g, "gold")
+        _tint_spin(self.in_v_r, "red")
         self.in_v_wg.setValue(int(defaults.get("v_wg", 0)))
         self.in_v_b.setValue(int(defaults.get("v_b", 0)))
         self.in_v_p.setValue(int(defaults.get("v_p", 0)))
         self.in_v_jr.setValue(int(defaults.get("v_jr", 0)))
+        self.in_v_g.setValue(int(defaults.get("v_g", 0)))
+        self.in_v_r.setValue(int(defaults.get("v_r", 0)))
         self.in_purple_count_est.setValue(int(defaults.get("purple_count_est", 0)))
+        self.in_gold_count_est.setValue(int(defaults.get("gold_count_est", 0)))
 
         for w in (
-            self.in_T, self.in_B, self.in_WG, self.in_purple_avg, self.in_purple_count_est,
-            self.in_v_wg, self.in_v_b, self.in_v_p, self.in_v_jr,
+            self.in_T, self.in_B, self.in_WG,
+            self.in_purple_avg, self.in_purple_count_est,
+            self.in_purple_total_grids, self.in_purple_count,
+            self.in_gold_avg, self.in_gold_count_est,
+            self.in_gold_total_grids, self.in_gold_count,
+            self.in_v_wg, self.in_v_b, self.in_v_p, self.in_v_jr, self.in_v_g, self.in_v_r,
         ):
             w.valueChanged.connect(self._on_field_changed)
 
-        form.addRow("总格数 T:", self.in_T)
-        form.addRow("蓝色总格数 B:", self.in_B)
-        form.addRow("白绿总格数 WG:", self.in_WG)
-        form.addRow("紫色平均格数 c (2位小数):", self.in_purple_avg)
-        form.addRow("紫色物品数预估 b_est:", self.in_purple_count_est)
+        # 基础格数
+        basic_box = QGroupBox("总格数 / 蓝色 / 白绿")
+        basic_h = QHBoxLayout(basic_box)
+        basic_h.addWidget(QLabel("总格数:"))
+        basic_h.addWidget(self.in_T)
+        basic_h.addSpacing(12)
+        basic_h.addWidget(QLabel("蓝色格数:"))
+        basic_h.addWidget(self.in_B)
+        basic_h.addSpacing(12)
+        basic_h.addWidget(QLabel("白绿格数:"))
+        basic_h.addWidget(self.in_WG)
+        basic_h.addStretch()
+        form.addRow(basic_box)
 
-        price_box = QGroupBox("单格估价 (会作为默认值持久化)")
-        price_form = QFormLayout(price_box)
-        price_form.addRow("白绿 v_wg:", self.in_v_wg)
-        price_form.addRow("蓝   v_b:", self.in_v_b)
-        price_form.addRow("紫   v_p:", self.in_v_p)
-        price_form.addRow("金红 v_jr:", self.in_v_jr)
+        self.in_purple_avg.setToolTip("紫色平均格数 c_p (优品均格 道具, 1000银)")
+        self.in_purple_count_est.setToolTip("紫色物品数预估 b_est, 主观判断")
+        self.in_purple_total_grids.setToolTip("紫色总格数 a_p (优品扫描 道具, 2500银)")
+        self.in_purple_count.setToolTip("紫色物品数 b_p (优品存量 道具, 2500银)")
+        self.in_gold_avg.setToolTip("金色平均格数 c_g (极品均格 道具, 10000银)")
+        self.in_gold_count_est.setToolTip("金色物品数预估 b_est, 主观判断")
+        self.in_gold_total_grids.setToolTip("金色总格数 a_g (极品扫描 道具, 10000银)")
+        self.in_gold_count.setToolTip("金色物品数 b_g (极品存量 道具, 10000银)")
+
+        # 紫色 (一行排列)
+        p_box = QGroupBox("紫色 (任意组合即可反推)")
+        _tint_groupbox(p_box, "purple")
+        p_h = QHBoxLayout(p_box)
+        p_h.addWidget(QLabel("平均格数:"))
+        p_h.addWidget(self.in_purple_avg)
+        p_h.addSpacing(8)
+        p_h.addWidget(QLabel("预估件数:"))
+        p_h.addWidget(self.in_purple_count_est)
+        p_h.addSpacing(8)
+        p_h.addWidget(QLabel("总格数:"))
+        p_h.addWidget(self.in_purple_total_grids)
+        p_h.addSpacing(8)
+        p_h.addWidget(QLabel("件数:"))
+        p_h.addWidget(self.in_purple_count)
+        p_h.addStretch()
+        form.addRow(p_box)
+
+        # 金色 (一行排列)
+        g_box = QGroupBox("金色 (可选, 任意组合)")
+        _tint_groupbox(g_box, "gold")
+        g_h = QHBoxLayout(g_box)
+        g_h.addWidget(QLabel("平均格数:"))
+        g_h.addWidget(self.in_gold_avg)
+        g_h.addSpacing(8)
+        g_h.addWidget(QLabel("预估件数:"))
+        g_h.addWidget(self.in_gold_count_est)
+        g_h.addSpacing(8)
+        g_h.addWidget(QLabel("总格数:"))
+        g_h.addWidget(self.in_gold_total_grids)
+        g_h.addSpacing(8)
+        g_h.addWidget(QLabel("件数:"))
+        g_h.addWidget(self.in_gold_count)
+        g_h.addStretch()
+        form.addRow(g_box)
+
+        # 单格估价
+        price_box = QGroupBox("单格估价 (持久化)")
+        price_h = QHBoxLayout(price_box)
+        for lab, w in (
+            ("白绿", self.in_v_wg), ("蓝", self.in_v_b), ("紫", self.in_v_p),
+            ("金红混", self.in_v_jr), ("金", self.in_v_g), ("红", self.in_v_r),
+        ):
+            price_h.addWidget(QLabel(lab + ":"))
+            w.setMaximumWidth(110)
+            price_h.addWidget(w)
+            price_h.addSpacing(4)
+        price_h.addStretch()
         form.addRow(price_box)
 
         return box
@@ -351,39 +435,63 @@ class MainWindow(QMainWindow):
         v = QVBoxLayout(box)
 
         hint = QLabel(
-            "候选解释: 紫总格数 = 道具看到的紫色物品占据的总格子数; "
-            "紫物品数 = 紫色物品个数。\n"
-            "(同一个紫色平均值 c 可能对应多组 (紫总格数, 紫物品数), 这里列出最接近你预估的几个)"
+            "候选解释: 同一个平均格数可能对应多组 (总格数, 物品数)。"
+            "输入越多, 候选越少, 价值范围越窄。"
         )
         hint.setStyleSheet("color: #555; font-size: 9pt;")
         hint.setWordWrap(True)
         v.addWidget(hint)
 
-        self.candidates_group = QButtonGroup(self)
-        self.candidates_group.setExclusive(True)
-        self.candidates_group.idToggled.connect(self._on_candidate_toggled)
-        self.candidates_container = QVBoxLayout()
-        self.candidates_container.setSpacing(4)
-        v.addLayout(self.candidates_container)
-        self._cached_candidates: list[dict[str, Any]] = []
+        # 价值范围 (最显眼)
+        self.lbl_value_range = QLabel("预估仓库价值: —")
+        self.lbl_value_range.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        v.addWidget(self.lbl_value_range)
 
-        self.lbl_gold_red = QLabel("金红剩余格数: —")
-        self.lbl_estimate = QLabel("预估仓库总价: —")
-        self.lbl_estimate.setStyleSheet("font-weight: bold; font-size: 14pt;")
-        v.addWidget(self.lbl_gold_red)
+        # 当前选中组合的明细
+        self.lbl_selected_detail = QLabel("当前选: —")
+        self.lbl_selected_detail.setStyleSheet("color: #333;")
+        v.addWidget(self.lbl_selected_detail)
 
-        # 预估总价 + 我的出价 并排
-        est_bid_h = QHBoxLayout()
-        est_bid_h.setSpacing(20)
-        est_bid_h.addWidget(self.lbl_estimate)
-        est_bid_h.addStretch()
-        bid_label = QLabel("我的出价:")
-        bid_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
-        est_bid_h.addWidget(bid_label)
-        self.in_bid = _make_money_spin(width=180)
-        self.in_bid.valueChanged.connect(self._on_field_changed)
-        est_bid_h.addWidget(self.in_bid)
-        v.addLayout(est_bid_h)
+        # 紫色 + 金色 候选 并排
+        cands_h = QHBoxLayout()
+
+        purple_col = QVBoxLayout()
+        purple_col.setSpacing(2)
+        p_title = QLabel("紫色候选")
+        p_title.setStyleSheet("color: #7b1fa2; font-weight: bold;")
+        purple_col.addWidget(p_title)
+        self.purple_candidates_group = QButtonGroup(self)
+        self.purple_candidates_group.setExclusive(True)
+        self.purple_candidates_group.idToggled.connect(
+            lambda btn_id, checked: self._on_candidate_toggled("purple", btn_id, checked)
+        )
+        self.purple_candidates_container = QVBoxLayout()
+        self.purple_candidates_container.setSpacing(2)
+        purple_col.addLayout(self.purple_candidates_container)
+        purple_col.addStretch()
+        self._cached_purple_candidates: list[dict[str, Any]] = []
+
+        gold_col = QVBoxLayout()
+        gold_col.setSpacing(2)
+        g_title = QLabel("金色候选")
+        g_title.setStyleSheet("color: #f57f17; font-weight: bold;")
+        gold_col.addWidget(g_title)
+        self.gold_candidates_group = QButtonGroup(self)
+        self.gold_candidates_group.setExclusive(True)
+        self.gold_candidates_group.idToggled.connect(
+            lambda btn_id, checked: self._on_candidate_toggled("gold", btn_id, checked)
+        )
+        self.gold_candidates_container = QVBoxLayout()
+        self.gold_candidates_container.setSpacing(2)
+        gold_col.addLayout(self.gold_candidates_container)
+        gold_col.addStretch()
+        self._cached_gold_candidates: list[dict[str, Any]] = []
+
+        cands_h.addLayout(purple_col, stretch=1)
+        cands_h.addLayout(gold_col, stretch=1)
+        v.addLayout(cands_h)
+
+        # 我的出价已移到右列 (注释下面)
 
         self.output_errors_label = QLabel("")
         self.output_errors_label.setStyleSheet("color: #e53935;")
@@ -392,67 +500,24 @@ class MainWindow(QMainWindow):
 
         return box
 
-    def _build_bid_box(self) -> QWidget:
-        # 出价已经在 outputs box 里, 这个方法保留但返回空 widget (不再加进布局)
-        return QWidget()
-
     def _build_actual_box(self) -> QWidget:
-        box = QGroupBox("真实数据 (事后填写)")
+        box = QGroupBox("真实结果 (事后填写)")
         v = QVBoxLayout(box)
 
-        # 紫
-        p_box = QGroupBox("紫色 (聚合)")
-        _tint_groupbox(p_box, "purple")
-        p_form = QFormLayout(p_box)
-        self.act_p_count = _make_int_spin(maximum=999, group_sep=False, width=80)
-        self.act_p_grids = _make_int_spin(maximum=999, group_sep=False, width=90)
-        self.act_p_value = _make_money_spin()
-        _tint_spin(self.act_p_count, "purple")
-        _tint_spin(self.act_p_grids, "purple")
-        _tint_spin(self.act_p_value, "purple")
-        for w in (self.act_p_count, self.act_p_grids, self.act_p_value):
-            w.valueChanged.connect(self._on_field_changed)
-        p_form.addRow("数量:", self.act_p_count)
-        p_form.addRow("总格数:", self.act_p_grids)
-        p_form.addRow("总价值:", self.act_p_value)
-        v.addWidget(p_box)
-
-        # 金
-        g_box = QGroupBox("金色 (聚合)")
-        _tint_groupbox(g_box, "gold")
-        g_form = QFormLayout(g_box)
-        self.act_g_count = _make_int_spin(maximum=999, group_sep=False, width=80)
-        self.act_g_grids = _make_int_spin(maximum=999, group_sep=False, width=90)
-        self.act_g_value = _make_money_spin()
-        _tint_spin(self.act_g_count, "gold")
-        _tint_spin(self.act_g_grids, "gold")
-        _tint_spin(self.act_g_value, "gold")
-        for w in (self.act_g_count, self.act_g_grids, self.act_g_value):
-            w.valueChanged.connect(self._on_field_changed)
-        g_form.addRow("数量:", self.act_g_count)
-        g_form.addRow("总格数:", self.act_g_grids)
-        g_form.addRow("总价值:", self.act_g_value)
-        v.addWidget(g_box)
-
-        # 红
-        r_box = QGroupBox("红色 (逐件)")
-        _tint_groupbox(r_box, "red")
-        r_v = QVBoxLayout(r_box)
-        self.red_table = RedItemsTable()
-        self.red_table.items_changed.connect(self._on_field_changed)
-        r_v.addWidget(self.red_table)
-        v.addWidget(r_box)
-
-        # 总价 + 一致性检查
-        total_box = QGroupBox("仓库总价")
-        total_form = QFormLayout(total_box)
-        self.act_total_value = _make_money_spin()
+        # 仓库总价
+        total_form = QFormLayout()
+        self.act_total_value = _make_money_spin(width=180)
         self.act_total_value.valueChanged.connect(self._on_field_changed)
-        total_form.addRow("真实仓库总价:", self.act_total_value)
-        self.consistency_label = QLabel("")
-        self.consistency_label.setWordWrap(True)
-        total_form.addRow("", self.consistency_label)
-        v.addWidget(total_box)
+        total_form.addRow("仓库总价:", self.act_total_value)
+        v.addLayout(total_form)
+
+        # 截图
+        screenshot_label = QLabel("结算截图 (含总价、物品、玩家盈亏)")
+        screenshot_label.setStyleSheet("color: #555; padding-top: 6px;")
+        v.addWidget(screenshot_label)
+        self.screenshot_widget = ScreenshotWidget(PROJECT_DIR / "screenshots", parent=self)
+        self.screenshot_widget.path_changed.connect(self._on_field_changed)
+        v.addWidget(self.screenshot_widget)
 
         return box
 
@@ -461,9 +526,18 @@ class MainWindow(QMainWindow):
         v = QVBoxLayout(box)
         self.note_edit = QPlainTextEdit()
         self.note_edit.setPlaceholderText("可记录对手出价、关键判断、复盘要点等")
-        self.note_edit.setFixedHeight(80)
+        self.note_edit.setMinimumHeight(180)
         self.note_edit.textChanged.connect(self._on_field_changed)
         v.addWidget(self.note_edit)
+        return box
+
+    def _build_bid_box(self) -> QWidget:
+        box = QGroupBox("我的出价")
+        h = QHBoxLayout(box)
+        self.in_bid = _make_money_spin(width=180)
+        self.in_bid.valueChanged.connect(self._on_field_changed)
+        h.addWidget(self.in_bid)
+        h.addStretch()
         return box
 
     def _build_bottom_buttons(self) -> QWidget:
@@ -518,7 +592,13 @@ class MainWindow(QMainWindow):
             self.in_WG.setValue(int(inputs.get("WG") or 0))
             self.in_purple_avg.setValue(float(inputs.get("purple_avg") or 0.0))
             self.in_purple_count_est.setValue(int(inputs.get("purple_count_est") or 0))
-            # 价格用记录里的，但记录没有时回退到 config 默认
+            self.in_purple_total_grids.setValue(int(inputs.get("purple_total_grids") or 0))
+            self.in_purple_count.setValue(int(inputs.get("purple_count") or 0))
+            self.in_gold_avg.setValue(float(inputs.get("gold_avg") or 0.0))
+            self.in_gold_count_est.setValue(int(inputs.get("gold_count_est") or 0))
+            self.in_gold_total_grids.setValue(int(inputs.get("gold_total_grids") or 0))
+            self.in_gold_count.setValue(int(inputs.get("gold_count") or 0))
+
             defaults = self.config.get_strategy_defaults(
                 self.current_strategy.name, self.current_strategy.defaults
             )
@@ -526,28 +606,20 @@ class MainWindow(QMainWindow):
             self.in_v_b.setValue(int(inputs.get("v_b") or defaults.get("v_b") or 0))
             self.in_v_p.setValue(int(inputs.get("v_p") or defaults.get("v_p") or 0))
             self.in_v_jr.setValue(int(inputs.get("v_jr") or defaults.get("v_jr") or 0))
+            self.in_v_g.setValue(int(inputs.get("v_g") or defaults.get("v_g") or 0))
+            self.in_v_r.setValue(int(inputs.get("v_r") or defaults.get("v_r") or 0))
 
-            # 元数据
             map_id = rec.get("map_id")
             self._set_combo_by_id(self.map_combo, map_id)
             hero_id = rec.get("hero_id")
             self._set_combo_by_id(self.hero_combo, hero_id)
 
-            # 出价
             self.in_bid.setValue(int(rec.get("bid") or 0))
 
-            # 真实数据
             actual = rec.get("actual", {})
-            p = actual.get("purple", {})
-            self.act_p_count.setValue(int(p.get("count") or 0))
-            self.act_p_grids.setValue(int(p.get("total_grids") or 0))
-            self.act_p_value.setValue(int(p.get("total_value") or 0))
-            g = actual.get("gold", {})
-            self.act_g_count.setValue(int(g.get("count") or 0))
-            self.act_g_grids.setValue(int(g.get("total_grids") or 0))
-            self.act_g_value.setValue(int(g.get("total_value") or 0))
-            self.red_table.set_items(actual.get("red", []))
             self.act_total_value.setValue(int(actual.get("total_value") or 0))
+            screenshot_path = actual.get("screenshot_path") or ""
+            self.screenshot_widget.set_path(screenshot_path)
 
             self.note_edit.setPlainText(rec.get("note") or "")
         finally:
@@ -603,7 +675,6 @@ class MainWindow(QMainWindow):
         inputs = self._collect_inputs()
         result = self.current_strategy.compute(inputs)
 
-        # 错误提示
         errors = result.get("errors", [])
         warnings = result.get("warnings", [])
         msg_parts = []
@@ -614,136 +685,165 @@ class MainWindow(QMainWindow):
         self.output_errors_label.setText("\n".join(msg_parts))
 
         hard_error = bool(errors)
-        # 输入区高亮
         _set_error(self.in_T, hard_error and "总格数" in "".join(errors))
         _set_error(self.in_B, hard_error and "蓝" in "".join(errors))
         _set_error(self.in_WG, hard_error and "白绿" in "".join(errors))
-        _set_error(self.in_purple_avg, any("紫色平均" in e for e in errors))
+        _set_error(self.in_purple_avg, any("紫色平均" in e or "紫色输入" in e for e in errors))
+        _set_error(self.in_gold_avg, any("金色平均" in e or "金色输入" in e for e in errors))
 
-        # 渲染候选
-        self._render_candidates(result.get("candidates", []))
+        # 渲染两组候选
+        self._render_candidate_group(
+            "purple",
+            result.get("purple_candidates", []),
+            self.purple_candidates_group,
+            self.purple_candidates_container,
+            self._cached_purple_candidates,
+        )
+        self._cached_purple_candidates = list(result.get("purple_candidates", []))
 
-        # 一致性检查
-        self._check_consistency()
+        self._render_candidate_group(
+            "gold",
+            result.get("gold_candidates", []),
+            self.gold_candidates_group,
+            self.gold_candidates_container,
+            self._cached_gold_candidates,
+        )
+        self._cached_gold_candidates = list(result.get("gold_candidates", []))
 
-        # 状态栏
+        # 更新范围 + 当前选中明细
+        self._update_value_range_label(result.get("value_range"))
+        self._update_selected_detail()
+
         if errors:
             self.status_bar.showMessage("⚠ " + " ; ".join(errors), 4000)
         else:
             self.status_bar.clearMessage()
 
-    def _render_candidates(self, candidates: list[dict[str, Any]]) -> None:
-        # 决定选中哪一个: 优先用当前按钮组的状态, 否则用 record 里的 selected_idx
-        current_sel = self.candidates_group.checkedId()
+    def _render_candidate_group(
+        self,
+        kind: str,
+        candidates: list[dict[str, Any]],
+        group: QButtonGroup,
+        container: QVBoxLayout,
+        cached: list[dict[str, Any]],
+    ) -> None:
+        current_sel = group.checkedId()
         if current_sel < 0:
-            current_sel = int(self.current_record.get("predicted", {}).get("selected_idx", 0) or 0)
+            key = f"selected_{kind}_idx"
+            current_sel = int(self.current_record.get("predicted", {}).get(key, 0) or 0)
         if not candidates:
             current_sel = -1
         elif current_sel < 0 or current_sel >= len(candidates):
             current_sel = 0
 
-        # 候选列表内容没变 → 只更新汇总, 不重建按钮 (避免点击被冲掉)
-        if self._candidates_equal(self._cached_candidates, candidates):
-            self._update_summary(candidates, current_sel)
+        if self._candidates_equal(cached, candidates):
+            # 不变, 仅同步选中
+            if 0 <= current_sel < len(candidates):
+                btns = group.buttons()
+                if current_sel < len(btns):
+                    btns[current_sel].setChecked(True)
             return
 
-        # 重建按钮
-        # 先从 group 移除旧按钮, 再清空 layout
-        for btn in self.candidates_group.buttons():
-            self.candidates_group.removeButton(btn)
-        for i in reversed(range(self.candidates_container.count())):
-            item = self.candidates_container.takeAt(i)
+        # 重建
+        for btn in group.buttons():
+            group.removeButton(btn)
+        for i in reversed(range(container.count())):
+            item = container.takeAt(i)
             w = item.widget()
             if w is not None:
                 w.deleteLater()
 
-        self._cached_candidates = [dict(c) for c in candidates]
-
         if not candidates:
-            placeholder = QLabel("(填入输入后会显示紫色 (总格数, 物品数) 候选)")
+            placeholder = QLabel("(无输入或输入不足)")
             placeholder.setStyleSheet("color: #888;")
-            self.candidates_container.addWidget(placeholder)
-            self._update_summary([], -1)
+            container.addWidget(placeholder)
             return
 
         for idx, cand in enumerate(candidates):
-            a = cand["purple_total_grids"]
-            b = cand["purple_count"]
-            gr = cand["gold_red_grids"]
-            ev = cand.get("estimated_value")
-            err = cand.get("error")
-            label = (
-                f"紫总 {a:>3} 格 / 紫物品 {b:>3} 件   →   "
-                f"金红剩余 {gr:>3} 格   →   估值 {_fmt_money(ev)}"
-            )
-            if err:
-                label += f"   ❌ {err}"
+            if kind == "purple":
+                a = cand["purple_total_grids"]
+                b = cand["purple_count"]
+            else:
+                a = cand["gold_total_grids"]
+                b = cand["gold_count"]
+            label = f"总 {a:>3} 格 / 物品 {b:>3} 件"
             rb = QRadioButton(label)
-            rb.setProperty("cand_idx", idx)
             if idx == current_sel:
                 rb.setChecked(True)
-            self.candidates_group.addButton(rb, idx)
-            self.candidates_container.addWidget(rb)
-
-        self._update_summary(candidates, current_sel)
+            group.addButton(rb, idx)
+            container.addWidget(rb)
 
     @staticmethod
     def _candidates_equal(a: list[dict[str, Any]], b: list[dict[str, Any]]) -> bool:
         if len(a) != len(b):
             return False
-        keys = ("purple_total_grids", "purple_count", "gold_red_grids", "estimated_value", "error")
         for x, y in zip(a, b):
-            for k in keys:
-                if x.get(k) != y.get(k):
-                    return False
+            if x != y:
+                return False
         return True
 
-    def _update_summary(self, candidates: list[dict[str, Any]], sel_idx: int) -> None:
-        if not candidates or sel_idx < 0 or sel_idx >= len(candidates):
-            self.lbl_gold_red.setText("金红剩余格数: —")
-            self.lbl_estimate.setText("预估仓库总价: —")
+    def _update_value_range_label(self, value_range: dict[str, float] | None) -> None:
+        if not value_range:
+            self.lbl_value_range.setText("预估仓库价值: —")
             return
-        cand = candidates[sel_idx]
-        self.lbl_gold_red.setText(
-            f"金红剩余格数: {cand['gold_red_grids']}    "
-            f"(紫总 {cand['purple_total_grids']} 格 / 紫物品 {cand['purple_count']} 件)"
-        )
-        self.lbl_estimate.setText(f"预估仓库总价: {_fmt_money(cand.get('estimated_value'))}")
+        vmin = value_range.get("min")
+        vmax = value_range.get("max")
+        vmed = value_range.get("median")
+        if vmin is None or vmax is None:
+            self.lbl_value_range.setText("预估仓库价值: —")
+            return
+        if abs(vmax - vmin) < 1:
+            self.lbl_value_range.setText(f"预估仓库价值: {_fmt_money(vmed)}")
+        else:
+            self.lbl_value_range.setText(
+                f"预估仓库价值: {_fmt_money(vmin)} ~ {_fmt_money(vmax)}    "
+                f"(中位 {_fmt_money(vmed)})"
+            )
 
-    def _on_candidate_toggled(self, btn_id: int, checked: bool) -> None:
-        # 只在 "成为选中" 时响应, 避免每次点击触发两遍 (取消+选中)
+    def _update_selected_detail(self) -> None:
+        p_idx = self.purple_candidates_group.checkedId()
+        g_idx = self.gold_candidates_group.checkedId()
+        p_cand = (
+            self._cached_purple_candidates[p_idx]
+            if 0 <= p_idx < len(self._cached_purple_candidates)
+            else None
+        )
+        g_cand = (
+            self._cached_gold_candidates[g_idx]
+            if 0 <= g_idx < len(self._cached_gold_candidates)
+            else None
+        )
+        if p_cand is None:
+            self.lbl_selected_detail.setText("当前选: 未确定紫色候选")
+            return
+        inputs = self._collect_inputs()
+        est = self.current_strategy.compute_estimate(inputs, p_cand, g_cand)
+        parts = [
+            f"紫 {est['purple_grids']} 格",
+        ]
+        if est["split_mode"]:
+            parts.append(f"金 {est['gold_grids']} 格")
+            parts.append(f"红 {est['red_grids']} 格")
+        else:
+            parts.append(f"金红剩余 {est['gold_red_grids']} 格")
+        if est["estimated_value"] is not None:
+            parts.append(f"估值 {_fmt_money(est['estimated_value'])}")
+        err = est.get("error")
+        if err:
+            parts.append(f"⚠ {err}")
+        self.lbl_selected_detail.setText("当前选: " + "  |  ".join(parts))
+
+    def _on_candidate_toggled(self, kind: str, btn_id: int, checked: bool) -> None:
         if not checked:
             return
-        self._update_summary(self._cached_candidates, btn_id)
-        self.current_record.setdefault("predicted", {})["selected_idx"] = btn_id
+        key = f"selected_{kind}_idx"
+        self.current_record.setdefault("predicted", {})[key] = btn_id
+        self._update_selected_detail()
         self._save_timer.start()
 
     def _check_consistency(self) -> None:
-        # 紫 + 金 + 红 vs 仓库总价
-        sum_parts = (
-            (self.act_p_value.value() or 0)
-            + (self.act_g_value.value() or 0)
-            + sum(it["value"] for it in self.red_table.items())
-        )
-        total = self.act_total_value.value() or 0
-        if total == 0 and sum_parts == 0:
-            self.consistency_label.setText("")
-            return
-        if total == 0:
-            self.consistency_label.setText(
-                f"分项合计 ¥{sum_parts:,}，总价未填"
-            )
-            self.consistency_label.setStyleSheet("color: #888;")
-            return
-        if sum_parts == total:
-            self.consistency_label.setText("✓ 各色总价 = 仓库总价")
-            self.consistency_label.setStyleSheet("color: #2e7d32;")
-        else:
-            diff = total - sum_parts
-            self.consistency_label.setText(
-                f"⚠ 各色合计 ¥{sum_parts:,} ≠ 总价 ¥{total:,}（差 ¥{diff:,}）"
-            )
-            self.consistency_label.setStyleSheet("color: #ef6c00;")
+        # 不再需要 (紫/金/红 manual entry 已移除)
+        return
 
     # ---------- 收集字段 → record dict ----------
 
@@ -754,35 +854,40 @@ class MainWindow(QMainWindow):
             "WG": self.in_WG.value() or None,
             "purple_avg": self.in_purple_avg.value() or None,
             "purple_count_est": self.in_purple_count_est.value() or None,
+            "purple_total_grids": self.in_purple_total_grids.value() or None,
+            "purple_count": self.in_purple_count.value() or None,
+            "gold_avg": self.in_gold_avg.value() or None,
+            "gold_count_est": self.in_gold_count_est.value() or None,
+            "gold_total_grids": self.in_gold_total_grids.value() or None,
+            "gold_count": self.in_gold_count.value() or None,
             "v_wg": self.in_v_wg.value() or None,
             "v_b": self.in_v_b.value() or None,
             "v_p": self.in_v_p.value() or None,
             "v_jr": self.in_v_jr.value() or None,
+            "v_g": self.in_v_g.value() or None,
+            "v_r": self.in_v_r.value() or None,
         }
 
-    def _collect_predicted(self, candidates: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-        sel_id = self.candidates_group.checkedId()
-        if sel_id < 0:
-            sel_id = 0
+    def _collect_predicted(self, result: dict[str, Any] | None = None) -> dict[str, Any]:
+        p_idx = self.purple_candidates_group.checkedId()
+        g_idx = self.gold_candidates_group.checkedId()
+        if p_idx < 0:
+            p_idx = 0
+        if g_idx < 0:
+            g_idx = 0
+        result = result or {}
         return {
-            "candidates": candidates or [],
-            "selected_idx": sel_id,
+            "purple_candidates": result.get("purple_candidates", []),
+            "gold_candidates": result.get("gold_candidates", []),
+            "value_range": result.get("value_range"),
+            "selected_purple_idx": p_idx,
+            "selected_gold_idx": g_idx,
         }
 
     def _collect_actual(self) -> dict[str, Any]:
         return {
-            "purple": {
-                "count": self.act_p_count.value() or None,
-                "total_grids": self.act_p_grids.value() or None,
-                "total_value": self.act_p_value.value() or None,
-            },
-            "gold": {
-                "count": self.act_g_count.value() or None,
-                "total_grids": self.act_g_grids.value() or None,
-                "total_value": self.act_g_value.value() or None,
-            },
-            "red": self.red_table.items(),
             "total_value": self.act_total_value.value() or None,
+            "screenshot_path": self.screenshot_widget.get_path() or None,
         }
 
     # ---------- autosave ----------
@@ -801,7 +906,7 @@ class MainWindow(QMainWindow):
 
         # 重算并存预测
         result = self.current_strategy.compute(rec["inputs"])
-        rec["predicted"] = self._collect_predicted(result.get("candidates", []))
+        rec["predicted"] = self._collect_predicted(result)
 
         bid = self.in_bid.value() or None
         rec["bid"] = bid
@@ -822,7 +927,10 @@ class MainWindow(QMainWindow):
                 "v_b": float(self.in_v_b.value()),
                 "v_p": float(self.in_v_p.value()),
                 "v_jr": float(self.in_v_jr.value()),
+                "v_g": float(self.in_v_g.value()),
+                "v_r": float(self.in_v_r.value()),
                 "purple_count_est": float(self.in_purple_count_est.value()),
+                "gold_count_est": float(self.in_gold_count_est.value()),
             },
         )
 

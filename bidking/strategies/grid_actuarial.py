@@ -1,33 +1,37 @@
 """数格子精算法。
 
-通过道具读数反推紫色物品的 (总格数 a, 物品数 b) 候选 (优品均格);
-若提供金色平均格数 (极品均格), 还能反推金色 (a, b), 进一步拆出红色剩余格数。
-结合用户给定的各品质单格估价, 估算仓库总价。
+通过任意组合的道具读数估算仓库价值范围。
+对每个品质 (紫/金), 用户可以提供以下任一/任意组合 (全部可选):
+  - 总格数 a  (扫描类道具: 优品扫描 / 极品扫描)
+  - 物品数 b  (存量类道具: 优品存量 / 极品存量)
+  - 平均格数 c (均格类道具: 优品均格 / 极品均格)
+  - 物品数预估 b_est (主观判断, 当 b 缺失时配合 c 用)
+
+输入越多, 反推的 (总格数, 物品数) 候选越少, 估值范围越窄。
 
 输入字段:
-  T:       总格数 (总仓储空间 道具)
-  B:       蓝色总格数 (良品扫描 道具)
-  WG:      白绿总格数 (普品扫描 道具)
-  purple_avg:       紫色平均格数 c_p  (优品均格 道具, 2 位小数)
-  purple_count_est: 用户预估紫色物品数 b_p_est
-  gold_avg:         金色平均格数 c_g  (极品均格 道具, 可选, 2 位小数)
-  gold_count_est:   用户预估金色物品数 b_g_est (可选)
+  T:                 总格数
+  B:                 蓝总格数
+  WG:                白绿总格数
+  purple_total_grids:   紫色总格数 a_p (可选)
+  purple_count:         紫色物品数 b_p (可选)
+  purple_avg:           紫色平均格数 c_p (可选, 2 位小数)
+  purple_count_est:     紫色物品数预估 b_p_est (主观)
+  gold_total_grids:     金色总格数 a_g (可选)
+  gold_count:           金色物品数 b_g (可选)
+  gold_avg:             金色平均格数 c_g (可选, 2 位小数)
+  gold_count_est:       金色物品数预估 b_g_est (主观)
 
-价格输入:
-  v_wg:    白绿每格估价
-  v_b:     蓝每格估价
-  v_p:     紫每格估价
-  v_jr:    金红混合每格估价 (当未提供 c_g 时使用)
-  v_g:     金每格估价 (当提供 c_g 时使用)
-  v_r:     红每格估价 (当提供 c_g 时使用)
+价格:
+  v_wg, v_b, v_p:    白绿/蓝/紫 单格估价
+  v_jr:              金红混合单格估价 (当未启用金色反推时用)
+  v_g, v_r:          金/红 单格估价 (当启用金色反推时用)
 
-输出结构:
-  purple_candidates: [{purple_total_grids, purple_count}, ...]
-  gold_candidates:   [{gold_total_grids, gold_count}, ...] (空表示未启用金反推)
-  errors:   list[str]
-  warnings: list[str]
-
-GUI 根据用户选中的 (purple_idx, gold_idx) 调用 compute_estimate 算最终估值。
+输出:
+  purple_candidates: list[{purple_total_grids, purple_count}]
+  gold_candidates:   list[{gold_total_grids, gold_count}]  (空 = 未启用)
+  value_min/max/median: float (跨所有候选组合)
+  errors, warnings:  list[str]
 """
 from __future__ import annotations
 
@@ -37,10 +41,7 @@ from .base import StrategyBase
 
 
 def find_candidates(c: float, max_items: int = 80) -> list[tuple[int, int]]:
-    """反推满足 c <= a/b <= c+0.01 的所有 (a, b) 正整数对。
-
-    c 是道具显示的 2 位小数。返回按 b 升序的列表。
-    """
+    """反推满足 c <= a/b <= c+0.01 的所有 (a, b) 正整数对。"""
     if c <= 0:
         return []
     results: list[tuple[int, int]] = []
@@ -57,18 +58,48 @@ def find_candidates(c: float, max_items: int = 80) -> list[tuple[int, int]]:
     return results
 
 
-# 兼容旧名字
-find_purple_candidates = find_candidates
+find_purple_candidates = find_candidates  # 旧名兼容
 
 
 def pick_nearest_candidates(
     candidates: list[tuple[int, int]], b_est: int, k: int = 3
 ) -> list[tuple[int, int]]:
-    """在所有候选中挑选 b 最接近 b_est 的 k 个候选。"""
     if not candidates:
         return []
-    sorted_by_dist = sorted(candidates, key=lambda ab: (abs(ab[1] - b_est), ab[1]))
-    return sorted_by_dist[:k]
+    return sorted(candidates, key=lambda ab: (abs(ab[1] - b_est), ab[1]))[:k]
+
+
+def _determine_candidates(
+    a: int | None,
+    b: int | None,
+    c: float | None,
+    b_est: int | None,
+    grid_key: str,
+    count_key: str,
+) -> list[dict[str, int]]:
+    """根据某品质的多个可选输入, 返回该品质的 (总格数, 物品数) 候选 list。
+
+    grid_key/count_key: 输出 dict 的键名 (purple_total_grids / gold_total_grids 等)。
+    """
+    if a is not None:
+        if b is not None:
+            return [{grid_key: a, count_key: b}]
+        if c is not None and c > 0:
+            b_derived = max(1, round(a / c))
+            return [{grid_key: a, count_key: b_derived}]
+        return [{grid_key: a, count_key: b_est or 1}]
+
+    if c is not None and c > 0:
+        all_c = find_candidates(c)
+        if b is not None:
+            matching = [(aa, bb) for (aa, bb) in all_c if bb == b]
+            if matching:
+                return [{grid_key: aa, count_key: bb} for (aa, bb) in matching]
+            return []
+        picked = pick_nearest_candidates(all_c, b_est or 1, 3)
+        return [{grid_key: aa, count_key: bb} for (aa, bb) in picked]
+
+    return []
 
 
 class GridActuarial(StrategyBase):
@@ -91,52 +122,68 @@ class GridActuarial(StrategyBase):
         T = _to_int(inputs.get("T"))
         B = _to_int(inputs.get("B"))
         WG = _to_int(inputs.get("WG"))
+        a_p = _to_int(inputs.get("purple_total_grids"))
+        b_p = _to_int(inputs.get("purple_count"))
         c_p = _to_float(inputs.get("purple_avg"))
         b_p_est = _to_int(inputs.get("purple_count_est"))
+        a_g = _to_int(inputs.get("gold_total_grids"))
+        b_g = _to_int(inputs.get("gold_count"))
         c_g = _to_float(inputs.get("gold_avg"))
         b_g_est = _to_int(inputs.get("gold_count_est"))
 
-        if T is None or B is None or WG is None or c_p is None:
-            return {
-                "purple_candidates": [],
-                "gold_candidates": [],
-                "errors": errors,
-                "warnings": warnings,
-            }
+        if T is None or B is None or WG is None:
+            return _empty_output(errors, warnings)
 
         if B + WG > T:
             errors.append(f"蓝({B}) + 白绿({WG}) = {B+WG} 已经超过总格数 {T}")
 
-        if c_p is not None and c_p > 0:
-            rounded = round(c_p, 2)
-            if abs(rounded - c_p) > 1e-9:
-                warnings.append(f"紫色平均 {c_p} 超过 2 位小数, 道具读数只有 2 位精度")
-        if c_g is not None and c_g > 0:
-            rounded = round(c_g, 2)
-            if abs(rounded - c_g) > 1e-9:
-                warnings.append(f"金色平均 {c_g} 超过 2 位小数, 道具读数只有 2 位精度")
+        for label, v in (("紫色平均", c_p), ("金色平均", c_g)):
+            if v is not None and v > 0:
+                if abs(round(v, 2) - v) > 1e-9:
+                    warnings.append(f"{label} {v} 超过 2 位小数, 道具读数只有 2 位精度")
 
-        purple_candidates: list[dict[str, Any]] = []
-        if c_p is not None and c_p > 0:
-            all_p = find_candidates(c_p)
-            if not all_p:
-                errors.append(f"紫色平均 {c_p} 反推不出任何合法 (a, b)")
-            picked = pick_nearest_candidates(all_p, b_p_est or 1, k=3)
-            for a, b in picked:
-                purple_candidates.append({"purple_total_grids": a, "purple_count": b})
+        purple_candidates = _determine_candidates(
+            a_p, b_p, c_p, b_p_est,
+            grid_key="purple_total_grids", count_key="purple_count",
+        )
+        gold_enabled = (
+            a_g is not None or (c_g is not None and c_g > 0) or b_g is not None
+        )
+        gold_candidates: list[dict[str, int]] = []
+        if gold_enabled:
+            gold_candidates = _determine_candidates(
+                a_g, b_g, c_g, b_g_est,
+                grid_key="gold_total_grids", count_key="gold_count",
+            )
 
-        gold_candidates: list[dict[str, Any]] = []
-        if c_g is not None and c_g > 0:
-            all_g = find_candidates(c_g, max_items=40)
-            if not all_g:
-                errors.append(f"金色平均 {c_g} 反推不出任何合法 (a, b)")
-            picked_g = pick_nearest_candidates(all_g, b_g_est or 1, k=3)
-            for a, b in picked_g:
-                gold_candidates.append({"gold_total_grids": a, "gold_count": b})
+        if not purple_candidates:
+            if c_p is not None or a_p is not None or b_p is not None:
+                errors.append("紫色输入不足以反推 (a, b)")
+
+        # 计算所有候选组合的估值, 取 min/max/median
+        values: list[float] = []
+        if purple_candidates:
+            g_iter: list[dict[str, int] | None] = list(gold_candidates) if gold_candidates else [None]
+            for pc in purple_candidates:
+                for gc in g_iter:
+                    est = self.compute_estimate(inputs, pc, gc)
+                    if est["estimated_value"] is not None and est.get("error") is None:
+                        values.append(est["estimated_value"])
+
+        value_range: dict[str, float] | None = None
+        if values:
+            srt = sorted(values)
+            value_range = {
+                "min": srt[0],
+                "max": srt[-1],
+                "median": srt[len(srt) // 2],
+            }
 
         return {
             "purple_candidates": purple_candidates,
             "gold_candidates": gold_candidates,
+            "gold_enabled": gold_enabled,
+            "value_range": value_range,
             "errors": errors,
             "warnings": warnings,
         }
@@ -147,9 +194,9 @@ class GridActuarial(StrategyBase):
         purple_cand: dict[str, Any] | None,
         gold_cand: dict[str, Any] | None,
     ) -> dict[str, Any]:
-        """根据当前选中的 (purple, gold) 候选, 计算金红/红剩余格数和总估值。
+        """按选中的 (紫, 金) 候选计算单点估值。
 
-        gold_cand=None 时按 "金红混合" 模式 (v_jr); 否则按 "金红拆分" 模式 (v_g + v_r)。
+        gold_cand=None → 金红混合 (v_jr); 否则 → 拆分 (v_g + v_r)。
         """
         T = _to_int(inputs.get("T")) or 0
         B = _to_int(inputs.get("B")) or 0
@@ -177,7 +224,7 @@ class GridActuarial(StrategyBase):
             a_r = gold_red - a_g
             err = None
             if a_r < 0:
-                err = f"红色格数 = {a_r} < 0, 紫+金已经超额"
+                err = f"红色格数 = {a_r} < 0, 紫+金已超额"
             value = WG * v_wg + B * v_b + a_p * v_p + a_g * v_g + max(a_r, 0) * v_r
             return {
                 "purple_grids": a_p, "gold_grids": a_g, "red_grids": a_r,
@@ -194,6 +241,17 @@ class GridActuarial(StrategyBase):
                 "gold_red_grids": gold_red, "estimated_value": value,
                 "split_mode": False, "error": err,
             }
+
+
+def _empty_output(errors: list[str], warnings: list[str]) -> dict[str, Any]:
+    return {
+        "purple_candidates": [],
+        "gold_candidates": [],
+        "gold_enabled": False,
+        "value_range": None,
+        "errors": errors,
+        "warnings": warnings,
+    }
 
 
 def _to_int(v: Any) -> int | None:
