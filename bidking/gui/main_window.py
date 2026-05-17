@@ -145,7 +145,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("BidKing — 竞拍之王估价")
-        self.resize(1200, 900)
+        self.resize(1200, 800)
 
         self.config = Config(CONFIG_PATH)
         self.store = RecordStore(RECORDS_PATH)
@@ -195,10 +195,16 @@ class MainWindow(QMainWindow):
         left_title = QLabel("估价 (出价前)")
         left_title.setStyleSheet("font-weight: bold; font-size: 12pt; padding: 4px 0;")
         left_v.addWidget(left_title)
-        left_v.addWidget(self._build_metadata_box(), alignment=Qt.AlignmentFlag.AlignLeft)
-        left_v.addWidget(self._build_inputs_box(), alignment=Qt.AlignmentFlag.AlignLeft)
+
+        # 元数据 + 输入 并排
+        md_inputs_h = QHBoxLayout()
+        md_inputs_h.setSpacing(8)
+        md_inputs_h.addWidget(self._build_metadata_box(), alignment=Qt.AlignmentFlag.AlignTop)
+        md_inputs_h.addWidget(self._build_inputs_box(), alignment=Qt.AlignmentFlag.AlignTop)
+        md_inputs_h.addStretch()
+        left_v.addLayout(md_inputs_h)
+
         left_v.addWidget(self._build_outputs_box())
-        left_v.addWidget(self._build_bid_box(), alignment=Qt.AlignmentFlag.AlignLeft)
         left_v.addStretch()
         left_scroll.setWidget(left_w)
 
@@ -218,9 +224,9 @@ class MainWindow(QMainWindow):
 
         splitter.addWidget(left_scroll)
         splitter.addWidget(right_scroll)
-        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([750, 750])
+        splitter.setSizes([800, 380])
         outer_v.addWidget(splitter, stretch=1)
 
         outer_v.addWidget(self._build_bottom_buttons())
@@ -365,7 +371,19 @@ class MainWindow(QMainWindow):
         self.lbl_estimate = QLabel("预估仓库总价: —")
         self.lbl_estimate.setStyleSheet("font-weight: bold; font-size: 14pt;")
         v.addWidget(self.lbl_gold_red)
-        v.addWidget(self.lbl_estimate)
+
+        # 预估总价 + 我的出价 并排
+        est_bid_h = QHBoxLayout()
+        est_bid_h.setSpacing(20)
+        est_bid_h.addWidget(self.lbl_estimate)
+        est_bid_h.addStretch()
+        bid_label = QLabel("我的出价:")
+        bid_label.setStyleSheet("font-weight: bold; font-size: 14pt;")
+        est_bid_h.addWidget(bid_label)
+        self.in_bid = _make_money_spin(width=180)
+        self.in_bid.valueChanged.connect(self._on_field_changed)
+        est_bid_h.addWidget(self.in_bid)
+        v.addLayout(est_bid_h)
 
         self.output_errors_label = QLabel("")
         self.output_errors_label.setStyleSheet("color: #e53935;")
@@ -375,49 +393,12 @@ class MainWindow(QMainWindow):
         return box
 
     def _build_bid_box(self) -> QWidget:
-        box = QGroupBox("我的出价")
-        box.setMaximumWidth(260)
-        h = QHBoxLayout(box)
-        self.in_bid = _make_money_spin()
-        self.in_bid.valueChanged.connect(self._on_field_changed)
-        h.addWidget(self.in_bid)
-        h.addStretch()
-        return box
+        # 出价已经在 outputs box 里, 这个方法保留但返回空 widget (不再加进布局)
+        return QWidget()
 
     def _build_actual_box(self) -> QWidget:
         box = QGroupBox("真实数据 (事后填写)")
         v = QVBoxLayout(box)
-
-        # 白绿
-        wg_box = QGroupBox("白+绿 (聚合)")
-        _tint_groupbox(wg_box, "wg")
-        wg_form = QFormLayout(wg_box)
-        self.act_wg_count = _make_int_spin(maximum=999, group_sep=False, width=80)
-        self.act_wg_grids = _make_int_spin(maximum=999, group_sep=False, width=90)
-        _tint_spin(self.act_wg_count, "wg")
-        _tint_spin(self.act_wg_grids, "wg")
-        for w in (self.act_wg_count, self.act_wg_grids):
-            w.valueChanged.connect(self._on_field_changed)
-        wg_form.addRow("数量:", self.act_wg_count)
-        wg_form.addRow("总格数:", self.act_wg_grids)
-        v.addWidget(wg_box)
-
-        # 蓝
-        b_box = QGroupBox("蓝色 (聚合)")
-        _tint_groupbox(b_box, "blue")
-        b_form = QFormLayout(b_box)
-        self.act_b_count = _make_int_spin(maximum=999, group_sep=False, width=80)
-        self.act_b_grids = _make_int_spin(maximum=999, group_sep=False, width=90)
-        self.act_b_value = _make_money_spin()
-        _tint_spin(self.act_b_count, "blue")
-        _tint_spin(self.act_b_grids, "blue")
-        _tint_spin(self.act_b_value, "blue")
-        for w in (self.act_b_count, self.act_b_grids, self.act_b_value):
-            w.valueChanged.connect(self._on_field_changed)
-        b_form.addRow("数量:", self.act_b_count)
-        b_form.addRow("总格数:", self.act_b_grids)
-        b_form.addRow("总价值:", self.act_b_value)
-        v.addWidget(b_box)
 
         # 紫
         p_box = QGroupBox("紫色 (聚合)")
@@ -557,13 +538,6 @@ class MainWindow(QMainWindow):
 
             # 真实数据
             actual = rec.get("actual", {})
-            wg = actual.get("wg", {})
-            self.act_wg_count.setValue(int(wg.get("count") or 0))
-            self.act_wg_grids.setValue(int(wg.get("total_grids") or 0))
-            b = actual.get("blue", {})
-            self.act_b_count.setValue(int(b.get("count") or 0))
-            self.act_b_grids.setValue(int(b.get("total_grids") or 0))
-            self.act_b_value.setValue(int(b.get("total_value") or 0))
             p = actual.get("purple", {})
             self.act_p_count.setValue(int(p.get("count") or 0))
             self.act_p_grids.setValue(int(p.get("total_grids") or 0))
@@ -745,10 +719,9 @@ class MainWindow(QMainWindow):
         self._save_timer.start()
 
     def _check_consistency(self) -> None:
-        # 各色总价 vs 仓库总价
+        # 紫 + 金 + 红 vs 仓库总价
         sum_parts = (
-            (self.act_b_value.value() or 0)
-            + (self.act_p_value.value() or 0)
+            (self.act_p_value.value() or 0)
             + (self.act_g_value.value() or 0)
             + sum(it["value"] for it in self.red_table.items())
         )
@@ -798,15 +771,6 @@ class MainWindow(QMainWindow):
 
     def _collect_actual(self) -> dict[str, Any]:
         return {
-            "wg": {
-                "count": self.act_wg_count.value() or None,
-                "total_grids": self.act_wg_grids.value() or None,
-            },
-            "blue": {
-                "count": self.act_b_count.value() or None,
-                "total_grids": self.act_b_grids.value() or None,
-                "total_value": self.act_b_value.value() or None,
-            },
             "purple": {
                 "count": self.act_p_count.value() or None,
                 "total_grids": self.act_p_grids.value() or None,

@@ -41,8 +41,6 @@ def empty_record(strategy_name: str, session_id: str, hero_id: int | None = None
         "predicted": {},
         "bid": None,
         "actual": {
-            "wg": {"count": None, "total_grids": None},
-            "blue": {"count": None, "total_grids": None, "total_value": None},
             "purple": {"count": None, "total_grids": None, "total_value": None},
             "gold": {"count": None, "total_grids": None, "total_value": None},
             "red": [],
