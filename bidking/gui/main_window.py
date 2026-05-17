@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QRadioButton,
     QScrollArea,
     QSpinBox,
+    QSplitter,
     QStatusBar,
     QVBoxLayout,
     QWidget,
@@ -64,25 +65,27 @@ def _load_json(path: Path) -> list[dict[str, Any]]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _make_int_spin(maximum: int = 99_999_999, group_sep: bool = True) -> QSpinBox:
+def _make_int_spin(maximum: int = 99_999_999, group_sep: bool = True, width: int = 120) -> QSpinBox:
     sb = QSpinBox()
     sb.setRange(0, maximum)
     sb.setGroupSeparatorShown(group_sep)
     sb.setAlignment(Qt.AlignmentFlag.AlignRight)
+    sb.setMaximumWidth(width)
     return sb
 
 
-def _make_money_spin() -> QSpinBox:
-    sb = _make_int_spin(maximum=999_999_999, group_sep=True)
+def _make_money_spin(width: int = 160) -> QSpinBox:
+    sb = _make_int_spin(maximum=999_999_999, group_sep=True, width=width)
     return sb
 
 
-def _make_float_spin(decimals: int = 2, maximum: float = 999.99) -> QDoubleSpinBox:
+def _make_float_spin(decimals: int = 2, maximum: float = 999.99, width: int = 100) -> QDoubleSpinBox:
     sb = QDoubleSpinBox()
     sb.setDecimals(decimals)
     sb.setRange(0.0, maximum)
     sb.setSingleStep(0.01)
     sb.setAlignment(Qt.AlignmentFlag.AlignRight)
+    sb.setMaximumWidth(width)
     return sb
 
 
@@ -95,6 +98,44 @@ def _fmt_money(v: int | float | None) -> str:
         return "—"
 
 
+# 品质配色 (bg, fg/border)
+QUALITY_COLORS: dict[str, tuple[str, str]] = {
+    "wg":     ("#e8f5e9", "#2e7d32"),   # 白+绿
+    "blue":   ("#e3f2fd", "#1565c0"),
+    "purple": ("#f3e5f5", "#7b1fa2"),
+    "gold":   ("#fff8e1", "#f57f17"),
+    "red":    ("#ffebee", "#c62828"),
+    "jr":     ("#ffe0b2", "#e65100"),   # 金红合并
+}
+
+
+def _tint_spin(sb: QWidget, key: str) -> None:
+    bg, _ = QUALITY_COLORS[key]
+    sb.setStyleSheet(f"QAbstractSpinBox {{ background-color: {bg}; }}")
+
+
+def _tint_groupbox(box: QGroupBox, key: str) -> None:
+    bg, fg = QUALITY_COLORS[key]
+    box.setStyleSheet(
+        f"""
+        QGroupBox {{
+            border: 1px solid {fg};
+            border-radius: 4px;
+            margin-top: 10px;
+            font-weight: bold;
+        }}
+        QGroupBox::title {{
+            color: {fg};
+            background-color: {bg};
+            subcontrol-origin: margin;
+            subcontrol-position: top left;
+            left: 8px;
+            padding: 0 6px;
+        }}
+        """
+    )
+
+
 def _set_error(widget: QWidget, on: bool) -> None:
     """红框标记错误字段"""
     widget.setStyleSheet("border: 2px solid #e53935;" if on else "")
@@ -104,7 +145,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("BidKing — 竞拍之王估价")
-        self.resize(900, 1000)
+        self.resize(1200, 900)
 
         self.config = Config(CONFIG_PATH)
         self.store = RecordStore(RECORDS_PATH)
@@ -137,28 +178,52 @@ class MainWindow(QMainWindow):
         central = QWidget()
         self.setCentralWidget(central)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
+        outer_v = QVBoxLayout(central)
+        outer_v.setContentsMargins(12, 12, 12, 12)
+        outer_v.setSpacing(8)
 
-        inner = QWidget()
-        v = QVBoxLayout(inner)
-        v.setContentsMargins(12, 12, 12, 12)
-        v.setSpacing(10)
+        outer_v.addWidget(self._build_topbar())
 
-        v.addWidget(self._build_topbar())
-        v.addWidget(self._build_metadata_box())
-        v.addWidget(self._build_inputs_box())
-        v.addWidget(self._build_outputs_box())
-        v.addWidget(self._build_bid_box())
-        v.addWidget(self._build_actual_box())
-        v.addWidget(self._build_note_box())
-        v.addWidget(self._build_bottom_buttons())
-        v.addStretch()
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        scroll.setWidget(inner)
-        outer = QVBoxLayout(central)
-        outer.setContentsMargins(0, 0, 0, 0)
-        outer.addWidget(scroll)
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_w = QWidget()
+        left_v = QVBoxLayout(left_w)
+        left_v.setContentsMargins(0, 0, 6, 0)
+        left_v.setSpacing(8)
+        left_title = QLabel("估价 (出价前)")
+        left_title.setStyleSheet("font-weight: bold; font-size: 12pt; padding: 4px 0;")
+        left_v.addWidget(left_title)
+        left_v.addWidget(self._build_metadata_box(), alignment=Qt.AlignmentFlag.AlignLeft)
+        left_v.addWidget(self._build_inputs_box(), alignment=Qt.AlignmentFlag.AlignLeft)
+        left_v.addWidget(self._build_outputs_box())
+        left_v.addWidget(self._build_bid_box(), alignment=Qt.AlignmentFlag.AlignLeft)
+        left_v.addStretch()
+        left_scroll.setWidget(left_w)
+
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_w = QWidget()
+        right_v = QVBoxLayout(right_w)
+        right_v.setContentsMargins(6, 0, 0, 0)
+        right_v.setSpacing(8)
+        right_title = QLabel("事后录入 (拍卖结束后)")
+        right_title.setStyleSheet("font-weight: bold; font-size: 12pt; padding: 4px 0;")
+        right_v.addWidget(right_title)
+        right_v.addWidget(self._build_actual_box())
+        right_v.addWidget(self._build_note_box())
+        right_v.addStretch()
+        right_scroll.setWidget(right_w)
+
+        splitter.addWidget(left_scroll)
+        splitter.addWidget(right_scroll)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([750, 750])
+        outer_v.addWidget(splitter, stretch=1)
+
+        outer_v.addWidget(self._build_bottom_buttons())
 
         self.status_bar = QStatusBar(self)
         self.setStatusBar(self.status_bar)
@@ -195,6 +260,7 @@ class MainWindow(QMainWindow):
 
     def _build_metadata_box(self) -> QWidget:
         box = QGroupBox("本场元数据")
+        box.setMaximumWidth(380)
         form = QFormLayout(box)
 
         self.map_combo = QComboBox()
@@ -219,13 +285,19 @@ class MainWindow(QMainWindow):
 
     def _build_inputs_box(self) -> QWidget:
         box = QGroupBox("输入 (数格子精算法)")
+        box.setMaximumWidth(420)
         form = QFormLayout(box)
 
-        self.in_T = _make_int_spin(maximum=99999, group_sep=True)
-        self.in_B = _make_int_spin(maximum=99999, group_sep=True)
-        self.in_WG = _make_int_spin(maximum=99999, group_sep=True)
-        self.in_purple_avg = _make_float_spin(decimals=2, maximum=99.99)
-        self.in_purple_count_est = _make_int_spin(maximum=999, group_sep=False)
+        self.in_T = _make_int_spin(maximum=999, group_sep=False, width=90)
+        self.in_B = _make_int_spin(maximum=999, group_sep=False, width=90)
+        self.in_WG = _make_int_spin(maximum=999, group_sep=False, width=90)
+        self.in_purple_avg = _make_float_spin(decimals=2, maximum=99.99, width=90)
+        self.in_purple_count_est = _make_int_spin(maximum=999, group_sep=False, width=90)
+
+        _tint_spin(self.in_B, "blue")
+        _tint_spin(self.in_WG, "wg")
+        _tint_spin(self.in_purple_avg, "purple")
+        _tint_spin(self.in_purple_count_est, "purple")
 
         # 默认价格 (从 config 读取，没存过用策略 defaults)
         defaults = self.config.get_strategy_defaults(
@@ -236,6 +308,10 @@ class MainWindow(QMainWindow):
         self.in_v_b = _make_money_spin()
         self.in_v_p = _make_money_spin()
         self.in_v_jr = _make_money_spin()
+        _tint_spin(self.in_v_wg, "wg")
+        _tint_spin(self.in_v_b, "blue")
+        _tint_spin(self.in_v_p, "purple")
+        _tint_spin(self.in_v_jr, "jr")
         self.in_v_wg.setValue(int(defaults.get("v_wg", 0)))
         self.in_v_b.setValue(int(defaults.get("v_b", 0)))
         self.in_v_p.setValue(int(defaults.get("v_p", 0)))
@@ -300,10 +376,12 @@ class MainWindow(QMainWindow):
 
     def _build_bid_box(self) -> QWidget:
         box = QGroupBox("我的出价")
+        box.setMaximumWidth(260)
         h = QHBoxLayout(box)
         self.in_bid = _make_money_spin()
         self.in_bid.valueChanged.connect(self._on_field_changed)
         h.addWidget(self.in_bid)
+        h.addStretch()
         return box
 
     def _build_actual_box(self) -> QWidget:
@@ -312,9 +390,12 @@ class MainWindow(QMainWindow):
 
         # 白绿
         wg_box = QGroupBox("白+绿 (聚合)")
+        _tint_groupbox(wg_box, "wg")
         wg_form = QFormLayout(wg_box)
-        self.act_wg_count = _make_int_spin(maximum=9999, group_sep=False)
-        self.act_wg_grids = _make_int_spin(maximum=99999, group_sep=True)
+        self.act_wg_count = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.act_wg_grids = _make_int_spin(maximum=999, group_sep=False, width=90)
+        _tint_spin(self.act_wg_count, "wg")
+        _tint_spin(self.act_wg_grids, "wg")
         for w in (self.act_wg_count, self.act_wg_grids):
             w.valueChanged.connect(self._on_field_changed)
         wg_form.addRow("数量:", self.act_wg_count)
@@ -323,10 +404,14 @@ class MainWindow(QMainWindow):
 
         # 蓝
         b_box = QGroupBox("蓝色 (聚合)")
+        _tint_groupbox(b_box, "blue")
         b_form = QFormLayout(b_box)
-        self.act_b_count = _make_int_spin(maximum=9999, group_sep=False)
-        self.act_b_grids = _make_int_spin(maximum=99999, group_sep=True)
+        self.act_b_count = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.act_b_grids = _make_int_spin(maximum=999, group_sep=False, width=90)
         self.act_b_value = _make_money_spin()
+        _tint_spin(self.act_b_count, "blue")
+        _tint_spin(self.act_b_grids, "blue")
+        _tint_spin(self.act_b_value, "blue")
         for w in (self.act_b_count, self.act_b_grids, self.act_b_value):
             w.valueChanged.connect(self._on_field_changed)
         b_form.addRow("数量:", self.act_b_count)
@@ -336,10 +421,14 @@ class MainWindow(QMainWindow):
 
         # 紫
         p_box = QGroupBox("紫色 (聚合)")
+        _tint_groupbox(p_box, "purple")
         p_form = QFormLayout(p_box)
-        self.act_p_count = _make_int_spin(maximum=9999, group_sep=False)
-        self.act_p_grids = _make_int_spin(maximum=99999, group_sep=True)
+        self.act_p_count = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.act_p_grids = _make_int_spin(maximum=999, group_sep=False, width=90)
         self.act_p_value = _make_money_spin()
+        _tint_spin(self.act_p_count, "purple")
+        _tint_spin(self.act_p_grids, "purple")
+        _tint_spin(self.act_p_value, "purple")
         for w in (self.act_p_count, self.act_p_grids, self.act_p_value):
             w.valueChanged.connect(self._on_field_changed)
         p_form.addRow("数量:", self.act_p_count)
@@ -349,10 +438,14 @@ class MainWindow(QMainWindow):
 
         # 金
         g_box = QGroupBox("金色 (聚合)")
+        _tint_groupbox(g_box, "gold")
         g_form = QFormLayout(g_box)
-        self.act_g_count = _make_int_spin(maximum=9999, group_sep=False)
-        self.act_g_grids = _make_int_spin(maximum=99999, group_sep=True)
+        self.act_g_count = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.act_g_grids = _make_int_spin(maximum=999, group_sep=False, width=90)
         self.act_g_value = _make_money_spin()
+        _tint_spin(self.act_g_count, "gold")
+        _tint_spin(self.act_g_grids, "gold")
+        _tint_spin(self.act_g_value, "gold")
         for w in (self.act_g_count, self.act_g_grids, self.act_g_value):
             w.valueChanged.connect(self._on_field_changed)
         g_form.addRow("数量:", self.act_g_count)
@@ -362,6 +455,7 @@ class MainWindow(QMainWindow):
 
         # 红
         r_box = QGroupBox("红色 (逐件)")
+        _tint_groupbox(r_box, "red")
         r_v = QVBoxLayout(r_box)
         self.red_table = RedItemsTable()
         self.red_table.items_changed.connect(self._on_field_changed)
