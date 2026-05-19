@@ -27,6 +27,11 @@
   v_jr:              金红混合单格估价 (当未启用金色反推时用)
   v_g, v_r:          金/红 单格估价 (当启用金色反推时用)
 
+已有格数 (可选, 仅在金红混合模式下生效):
+  owned_gold_grids:  已识别的金色格数 (按 v_g 单独计价)
+  owned_red_grids:   已识别的红色格数 (按 v_r 单独计价)
+  剩余金红格数按 v_jr 混合计价
+
 输出:
   purple_candidates: list[{purple_total_grids, purple_count}]
   gold_candidates:   list[{gold_total_grids, gold_count}]  (空 = 未启用)
@@ -245,6 +250,8 @@ class GridActuarial(StrategyBase):
         v_r = _to_float(inputs.get("v_r")) or 0.0
         p_total_value = _to_float(inputs.get("purple_total_value"))
         g_total_value = _to_float(inputs.get("gold_total_value"))
+        owned_g = _to_int(inputs.get("owned_gold_grids")) or 0
+        owned_r = _to_int(inputs.get("owned_red_grids")) or 0
 
         if purple_cand is None:
             return {
@@ -276,9 +283,19 @@ class GridActuarial(StrategyBase):
             err = None
             if gold_red < 0:
                 err = f"金红剩余 = {gold_red} < 0, 紫色已超额"
-            value = WG * v_wg + B * v_b + purple_value + max(gold_red, 0) * v_jr
+            mixed_remaining = gold_red - owned_g - owned_r
+            if err is None and mixed_remaining < 0:
+                err = (
+                    f"已有金({owned_g}) + 已有红({owned_r}) = {owned_g + owned_r} "
+                    f"超过金红剩余 {gold_red}"
+                )
+            value = (
+                WG * v_wg + B * v_b + purple_value
+                + owned_g * v_g + owned_r * v_r
+                + max(mixed_remaining, 0) * v_jr
+            )
             return {
-                "purple_grids": a_p, "gold_grids": 0, "red_grids": 0,
+                "purple_grids": a_p, "gold_grids": owned_g, "red_grids": owned_r,
                 "gold_red_grids": gold_red, "estimated_value": value,
                 "split_mode": False, "error": err,
             }

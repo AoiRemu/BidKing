@@ -312,6 +312,9 @@ class MainWindow(QMainWindow):
         self.in_gold_total_grids = _make_int_spin(maximum=999, group_sep=False, width=80)
         self.in_gold_count = _make_int_spin(maximum=999, group_sep=False, width=80)
         self.in_gold_total_value = _make_money_spin(width=130)
+        # 已有格数 (金/红): 仅在金红混合模式下单独计价, 剩余走 v_jr
+        self.in_owned_gold_grids = _make_int_spin(maximum=999, group_sep=False, width=80)
+        self.in_owned_red_grids = _make_int_spin(maximum=999, group_sep=False, width=80)
 
         _tint_spin(self.in_B, "blue")
         _tint_spin(self.in_WG, "wg")
@@ -323,6 +326,8 @@ class MainWindow(QMainWindow):
                   self.in_gold_total_grids, self.in_gold_count,
                   self.in_gold_total_value):
             _tint_spin(w, "gold")
+        _tint_spin(self.in_owned_gold_grids, "gold")
+        _tint_spin(self.in_owned_red_grids, "red")
 
         defaults = self.config.get_strategy_defaults(
             self.current_strategy.name, self.current_strategy.defaults
@@ -355,6 +360,7 @@ class MainWindow(QMainWindow):
             self.in_purple_total_grids, self.in_purple_count, self.in_purple_total_value,
             self.in_gold_avg, self.in_gold_count_est,
             self.in_gold_total_grids, self.in_gold_count, self.in_gold_total_value,
+            self.in_owned_gold_grids, self.in_owned_red_grids,
             self.in_v_wg, self.in_v_b, self.in_v_p, self.in_v_jr, self.in_v_g, self.in_v_r,
         ):
             w.valueChanged.connect(self._on_field_changed)
@@ -425,6 +431,19 @@ class MainWindow(QMainWindow):
         g_h.addWidget(self.in_gold_total_value)
         g_h.addStretch()
         form.addRow(g_box)
+
+        # 已有格数 (仅在金红混合模式下生效)
+        owned_box = QGroupBox("已有格数 (这些格数按金/红单价单独计, 剩余走金红混合价)")
+        owned_h = QHBoxLayout(owned_box)
+        owned_h.addWidget(QLabel("金色格数:"))
+        owned_h.addWidget(self.in_owned_gold_grids)
+        owned_h.addSpacing(12)
+        owned_h.addWidget(QLabel("红色格数:"))
+        owned_h.addWidget(self.in_owned_red_grids)
+        owned_h.addStretch()
+        self.in_owned_gold_grids.setToolTip("已识别的金色格数, 按 v_g 单独计价")
+        self.in_owned_red_grids.setToolTip("已识别的红色格数, 按 v_r 单独计价")
+        form.addRow(owned_box)
 
         # 单格估价
         price_box = QGroupBox("单格估价 (持久化)")
@@ -612,6 +631,8 @@ class MainWindow(QMainWindow):
             self.in_gold_total_grids.setValue(int(inputs.get("gold_total_grids") or 0))
             self.in_gold_count.setValue(int(inputs.get("gold_count") or 0))
             self.in_gold_total_value.setValue(int(inputs.get("gold_total_value") or 0))
+            self.in_owned_gold_grids.setValue(int(inputs.get("owned_gold_grids") or 0))
+            self.in_owned_red_grids.setValue(int(inputs.get("owned_red_grids") or 0))
 
             defaults = self.config.get_strategy_defaults(
                 self.current_strategy.name, self.current_strategy.defaults
@@ -876,6 +897,8 @@ class MainWindow(QMainWindow):
             "gold_total_grids": self.in_gold_total_grids.value() or None,
             "gold_count": self.in_gold_count.value() or None,
             "gold_total_value": self.in_gold_total_value.value() or None,
+            "owned_gold_grids": self.in_owned_gold_grids.value() or None,
+            "owned_red_grids": self.in_owned_red_grids.value() or None,
             "v_wg": self.in_v_wg.value() or None,
             "v_b": self.in_v_b.value() or None,
             "v_p": self.in_v_p.value() or None,
