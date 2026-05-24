@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
     QMainWindow,
@@ -447,7 +448,37 @@ class MainWindow(QMainWindow):
 
         # 单格估价
         price_box = QGroupBox("单格估价 (持久化)")
-        price_h = QHBoxLayout(price_box)
+        price_v = QVBoxLayout(price_box)
+
+        # 预设管理行
+        preset_h = QHBoxLayout()
+        preset_h.addWidget(QLabel("预设:"))
+        self.preset_combo = QComboBox()
+        self.preset_combo.setMinimumWidth(160)
+        self.preset_combo.setToolTip("已保存的价格预设；选择后点「应用」加载")
+        preset_h.addWidget(self.preset_combo)
+        self.btn_preset_apply = QPushButton("应用")
+        self.btn_preset_apply.setToolTip("把所选预设的价格加载到下面的输入框")
+        self.btn_preset_apply.clicked.connect(self._on_preset_apply)
+        preset_h.addWidget(self.btn_preset_apply)
+        self.btn_preset_save = QPushButton("保存为…")
+        self.btn_preset_save.setToolTip("把当前价格保存为一个命名预设")
+        self.btn_preset_save.clicked.connect(self._on_preset_save_as)
+        preset_h.addWidget(self.btn_preset_save)
+        self.btn_preset_overwrite = QPushButton("覆盖")
+        self.btn_preset_overwrite.setToolTip("用当前价格覆盖所选预设")
+        self.btn_preset_overwrite.clicked.connect(self._on_preset_overwrite)
+        preset_h.addWidget(self.btn_preset_overwrite)
+        self.btn_preset_rename = QPushButton("重命名")
+        self.btn_preset_rename.clicked.connect(self._on_preset_rename)
+        preset_h.addWidget(self.btn_preset_rename)
+        self.btn_preset_delete = QPushButton("删除")
+        self.btn_preset_delete.clicked.connect(self._on_preset_delete)
+        preset_h.addWidget(self.btn_preset_delete)
+        preset_h.addStretch()
+        price_v.addLayout(preset_h)
+
+        price_h = QHBoxLayout()
         for lab, w in (
             ("白绿", self.in_v_wg), ("蓝", self.in_v_b), ("紫", self.in_v_p),
             ("金红混", self.in_v_jr), ("金", self.in_v_g), ("红", self.in_v_r),
@@ -457,7 +488,10 @@ class MainWindow(QMainWindow):
             price_h.addWidget(w)
             price_h.addSpacing(4)
         price_h.addStretch()
+        price_v.addLayout(price_h)
         form.addRow(price_box)
+
+        self._refresh_preset_combo()
 
         return box
 
@@ -988,6 +1022,7 @@ class MainWindow(QMainWindow):
         if name not in self.strategies:
             return
         self.current_strategy = self.strategies[name]
+        self._refresh_preset_combo()
         self._on_field_changed()
 
     def _on_new_game(self) -> None:
@@ -1043,6 +1078,137 @@ class MainWindow(QMainWindow):
         self.store.delete(rid)
         self.status_bar.showMessage("已删除", 2000)
         self._start_fresh_record(new_session=False)
+
+    # ---------- 价格预设 ----------
+
+    def _current_price_values(self) -> dict[str, float]:
+        return {
+            "v_wg": float(self.in_v_wg.value()),
+            "v_b": float(self.in_v_b.value()),
+            "v_p": float(self.in_v_p.value()),
+            "v_jr": float(self.in_v_jr.value()),
+            "v_g": float(self.in_v_g.value()),
+            "v_r": float(self.in_v_r.value()),
+            "purple_count_est": float(self.in_purple_count_est.value()),
+            "gold_count_est": float(self.in_gold_count_est.value()),
+        }
+
+    def _refresh_preset_combo(self, select: str | None = None) -> None:
+        names = self.config.list_price_presets(self.current_strategy.name)
+        with QSignalBlocker(self.preset_combo):
+            self.preset_combo.clear()
+            for n in names:
+                self.preset_combo.addItem(n)
+            if select and select in names:
+                self.preset_combo.setCurrentText(select)
+            elif names:
+                self.preset_combo.setCurrentIndex(0)
+            else:
+                self.preset_combo.setCurrentIndex(-1)
+        has = bool(names)
+        self.btn_preset_apply.setEnabled(has)
+        self.btn_preset_overwrite.setEnabled(has)
+        self.btn_preset_rename.setEnabled(has)
+        self.btn_preset_delete.setEnabled(has)
+
+    def _on_preset_apply(self) -> None:
+        name = self.preset_combo.currentText().strip()
+        if not name:
+            return
+        preset = self.config.get_price_preset(self.current_strategy.name, name)
+        if preset is None:
+            self.status_bar.showMessage(f"预设「{name}」不存在", 3000)
+            return
+        # 应用到 UI
+        self._loading = True
+        try:
+            self.in_v_wg.setValue(int(preset.get("v_wg", self.in_v_wg.value())))
+            self.in_v_b.setValue(int(preset.get("v_b", self.in_v_b.value())))
+            self.in_v_p.setValue(int(preset.get("v_p", self.in_v_p.value())))
+            self.in_v_jr.setValue(int(preset.get("v_jr", self.in_v_jr.value())))
+            self.in_v_g.setValue(int(preset.get("v_g", self.in_v_g.value())))
+            self.in_v_r.setValue(int(preset.get("v_r", self.in_v_r.value())))
+            if "purple_count_est" in preset:
+                self.in_purple_count_est.setValue(int(preset["purple_count_est"]))
+            if "gold_count_est" in preset:
+                self.in_gold_count_est.setValue(int(preset["gold_count_est"]))
+        finally:
+            self._loading = False
+        self._on_field_changed()
+        self.status_bar.showMessage(f"已应用预设「{name}」", 2500)
+
+    def _on_preset_save_as(self) -> None:
+        name, ok = QInputDialog.getText(self, "保存价格预设", "预设名称:")
+        if not ok:
+            return
+        name = name.strip()
+        if not name:
+            self.status_bar.showMessage("预设名不能为空", 3000)
+            return
+        existing = self.config.list_price_presets(self.current_strategy.name)
+        if name in existing:
+            ans = QMessageBox.question(
+                self,
+                "覆盖确认",
+                f"预设「{name}」已存在，是否覆盖？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if ans != QMessageBox.StandardButton.Yes:
+                return
+        self.config.save_price_preset(
+            self.current_strategy.name, name, self._current_price_values()
+        )
+        self._refresh_preset_combo(select=name)
+        self.status_bar.showMessage(f"已保存预设「{name}」", 2500)
+
+    def _on_preset_overwrite(self) -> None:
+        name = self.preset_combo.currentText().strip()
+        if not name:
+            return
+        ans = QMessageBox.question(
+            self,
+            "覆盖预设",
+            f"用当前价格覆盖预设「{name}」？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        self.config.save_price_preset(
+            self.current_strategy.name, name, self._current_price_values()
+        )
+        self.status_bar.showMessage(f"已覆盖预设「{name}」", 2500)
+
+    def _on_preset_rename(self) -> None:
+        old = self.preset_combo.currentText().strip()
+        if not old:
+            return
+        new, ok = QInputDialog.getText(self, "重命名预设", "新名称:", text=old)
+        if not ok:
+            return
+        new = new.strip()
+        if not new or new == old:
+            return
+        if not self.config.rename_price_preset(self.current_strategy.name, old, new):
+            self.status_bar.showMessage(f"重命名失败 (名称已存在?)", 3000)
+            return
+        self._refresh_preset_combo(select=new)
+        self.status_bar.showMessage(f"已重命名为「{new}」", 2500)
+
+    def _on_preset_delete(self) -> None:
+        name = self.preset_combo.currentText().strip()
+        if not name:
+            return
+        ans = QMessageBox.question(
+            self,
+            "删除预设",
+            f"确定删除预设「{name}」？",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        )
+        if ans != QMessageBox.StandardButton.Yes:
+            return
+        self.config.delete_price_preset(self.current_strategy.name, name)
+        self._refresh_preset_combo()
+        self.status_bar.showMessage(f"已删除预设「{name}」", 2500)
 
 
 def _try_int(s: str) -> int | None:
