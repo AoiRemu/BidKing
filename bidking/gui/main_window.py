@@ -54,6 +54,7 @@ from ..storage.records import (
 from ..strategies.grid_actuarial import GridActuarial
 from ..strategies.base import StrategyBase
 from .widgets.red_items_table import RedItemsTable
+from .widgets.revealed_items_table import RevealedItemsTable
 from .widgets.screenshot import ScreenshotWidget
 
 
@@ -361,7 +362,6 @@ class MainWindow(QMainWindow):
             self.in_purple_total_grids, self.in_purple_count, self.in_purple_total_value,
             self.in_gold_avg, self.in_gold_count_est,
             self.in_gold_total_grids, self.in_gold_count, self.in_gold_total_value,
-            self.in_owned_gold_grids, self.in_owned_red_grids,
             self.in_v_wg, self.in_v_b, self.in_v_p, self.in_v_jr, self.in_v_g, self.in_v_r,
         ):
             w.valueChanged.connect(self._on_field_changed)
@@ -433,18 +433,31 @@ class MainWindow(QMainWindow):
         g_h.addStretch()
         form.addRow(g_box)
 
-        # 已有格数 (仅在金红混合模式下生效)
-        owned_box = QGroupBox("已有格数 (这些格数按金/红单价单独计, 剩余走金红混合价)")
-        owned_h = QHBoxLayout(owned_box)
-        owned_h.addWidget(QLabel("金色格数:"))
-        owned_h.addWidget(self.in_owned_gold_grids)
-        owned_h.addSpacing(12)
-        owned_h.addWidget(QLabel("红色格数:"))
-        owned_h.addWidget(self.in_owned_red_grids)
-        owned_h.addStretch()
-        self.in_owned_gold_grids.setToolTip("已识别的金色格数, 按 v_g 单独计价")
-        self.in_owned_red_grids.setToolTip("已识别的红色格数, 按 v_r 单独计价")
-        form.addRow(owned_box)
+        # 已显示物品 (逐件录入颜色/占格/价值, 自动派生 owned_gold/red 格数)
+        revealed_box = QGroupBox("已显示物品 (拍卖中已看到的物品: 颜色/占格/价值)")
+        revealed_v = QVBoxLayout(revealed_box)
+
+        toggle_h = QHBoxLayout()
+        self.btn_toggle_revealed = QPushButton("▶ 展开")
+        self.btn_toggle_revealed.setCheckable(True)
+        self.btn_toggle_revealed.setChecked(False)
+        self.btn_toggle_revealed.setMaximumWidth(100)
+        self.btn_toggle_revealed.toggled.connect(self._on_toggle_revealed)
+        toggle_h.addWidget(self.btn_toggle_revealed)
+        toggle_h.addStretch()
+        revealed_v.addLayout(toggle_h)
+
+        self.revealed_items_table = RevealedItemsTable(self)
+        self.revealed_items_table.setMinimumHeight(160)
+        self.revealed_items_table.items_changed.connect(self._on_field_changed)
+        self.revealed_items_table.setVisible(False)
+        revealed_v.addWidget(self.revealed_items_table)
+
+        self.lbl_revealed_summary = QLabel("已显示物品: —")
+        self.lbl_revealed_summary.setStyleSheet("color: #333; font-weight: bold; padding: 4px;")
+        self.lbl_revealed_summary.setWordWrap(True)
+        revealed_v.addWidget(self.lbl_revealed_summary)
+        form.addRow(revealed_box)
 
         # 单格估价
         price_box = QGroupBox("单格估价 (持久化)")
@@ -667,6 +680,10 @@ class MainWindow(QMainWindow):
             self.in_gold_total_value.setValue(int(inputs.get("gold_total_value") or 0))
             self.in_owned_gold_grids.setValue(int(inputs.get("owned_gold_grids") or 0))
             self.in_owned_red_grids.setValue(int(inputs.get("owned_red_grids") or 0))
+            revealed = list(inputs.get("revealed_items") or [])
+            self.revealed_items_table.set_items(revealed)
+            # 有已录入的物品时自动展开, 否则保持默认隐藏
+            self.btn_toggle_revealed.setChecked(bool(revealed))
 
             defaults = self.config.get_strategy_defaults(
                 self.current_strategy.name, self.current_strategy.defaults
@@ -782,6 +799,7 @@ class MainWindow(QMainWindow):
         # 更新范围 + 当前选中明细
         self._update_value_range_label(result.get("value_range"))
         self._update_selected_detail()
+        self._update_revealed_summary()
 
         if errors:
             self.status_bar.showMessage("⚠ " + " ; ".join(errors), 4000)
@@ -869,6 +887,51 @@ class MainWindow(QMainWindow):
                 f"(中位 {_fmt_money(vmed)})"
             )
 
+    def _on_toggle_revealed(self, checked: bool) -> None:
+        self.revealed_items_table.setVisible(checked)
+        self.btn_toggle_revealed.setText("▼ 收起" if checked else "▶ 展开")
+
+    def _update_revealed_summary(self) -> None:
+        """更新「已显示物品」摘要标签: 总价 + 各色占格 + 剩余金红格数。"""
+        rsum = self.revealed_items_table.summary()
+        per = rsum["per_color"]
+        total_value = rsum["total_value"]
+        total_grids = rsum["total_grids"]
+
+        if total_grids == 0 and total_value == 0:
+            self.lbl_revealed_summary.setText("已显示物品: —")
+            return
+
+        # 剩余金红格数: 基于当前选中紫色候选 (若无, 则用 T-B-WG)
+        T = self.in_T.value() or 0
+        B = self.in_B.value() or 0
+        WG = self.in_WG.value() or 0
+        p_idx = self.purple_candidates_group.checkedId()
+        if 0 <= p_idx < len(self._cached_purple_candidates):
+            a_p = self._cached_purple_candidates[p_idx].get("purple_total_grids", 0)
+        else:
+            a_p = 0
+        gold_red_total = T - B - WG - a_p
+        revealed_gr = per["gold"]["grids"] + per["red"]["grids"]
+        remaining_gr = gold_red_total - revealed_gr
+
+        color_labels = [
+            ("wg", "白绿"), ("blue", "蓝"), ("purple", "紫"),
+            ("gold", "金"), ("red", "红"),
+        ]
+        parts = []
+        for key, lab in color_labels:
+            g = per[key]["grids"]
+            v = per[key]["value"]
+            if g or v:
+                parts.append(f"{lab} {g}格/{_fmt_money(v)}")
+        breakdown = "  ".join(parts) if parts else "(无)"
+
+        self.lbl_revealed_summary.setText(
+            f"已显示物品 {breakdown}  |  总价 {_fmt_money(total_value)}  |  "
+            f"剩余金红格数 {remaining_gr}"
+        )
+
     def _update_selected_detail(self) -> None:
         p_idx = self.purple_candidates_group.checkedId()
         g_idx = self.gold_candidates_group.checkedId()
@@ -908,6 +971,7 @@ class MainWindow(QMainWindow):
         key = f"selected_{kind}_idx"
         self.current_record.setdefault("predicted", {})[key] = btn_id
         self._update_selected_detail()
+        self._update_revealed_summary()
         self._save_timer.start()
 
     def _check_consistency(self) -> None:
@@ -917,6 +981,18 @@ class MainWindow(QMainWindow):
     # ---------- 收集字段 → record dict ----------
 
     def _collect_inputs(self) -> dict[str, Any]:
+        revealed_items = self.revealed_items_table.items()
+        rsum = self.revealed_items_table.summary()
+        # owned_gold/red 从已显示物品中的金/红行自动派生
+        derived_gold = rsum["per_color"]["gold"]["grids"]
+        derived_red = rsum["per_color"]["red"]["grids"]
+        # 同步回隐藏的 spinbox (用于估价兼容旧逻辑)
+        if self.in_owned_gold_grids.value() != derived_gold:
+            with QSignalBlocker(self.in_owned_gold_grids):
+                self.in_owned_gold_grids.setValue(derived_gold)
+        if self.in_owned_red_grids.value() != derived_red:
+            with QSignalBlocker(self.in_owned_red_grids):
+                self.in_owned_red_grids.setValue(derived_red)
         return {
             "T": self.in_T.value() or None,
             "B": self.in_B.value() or None,
@@ -931,8 +1007,9 @@ class MainWindow(QMainWindow):
             "gold_total_grids": self.in_gold_total_grids.value() or None,
             "gold_count": self.in_gold_count.value() or None,
             "gold_total_value": self.in_gold_total_value.value() or None,
-            "owned_gold_grids": self.in_owned_gold_grids.value() or None,
-            "owned_red_grids": self.in_owned_red_grids.value() or None,
+            "owned_gold_grids": derived_gold or None,
+            "owned_red_grids": derived_red or None,
+            "revealed_items": revealed_items,
             "v_wg": self.in_v_wg.value() or None,
             "v_b": self.in_v_b.value() or None,
             "v_p": self.in_v_p.value() or None,

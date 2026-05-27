@@ -272,8 +272,23 @@ class GridActuarial(StrategyBase):
             err = None
             if a_r < 0:
                 err = f"红色格数 = {a_r} < 0, 紫+金已超额"
-            gold_value = g_total_value if (g_total_value is not None and g_total_value > 0) else a_g * v_g
-            value = WG * v_wg + B * v_b + purple_value + gold_value + max(a_r, 0) * v_r
+            # 已显示金/红的格数从对应池子里扣除, 再加上已显示物品的总价值
+            revealed_total_value = _revealed_total_value(inputs)
+            remaining_g = a_g - owned_g
+            remaining_r = a_r - owned_r
+            if err is None and remaining_g < 0:
+                err = f"已显示金({owned_g}) 超过金色总格数 {a_g}"
+            if err is None and remaining_r < 0:
+                err = f"已显示红({owned_r}) 超过红色总格数 {a_r}"
+            gold_value = (
+                g_total_value if (g_total_value is not None and g_total_value > 0)
+                else max(remaining_g, 0) * v_g
+            )
+            value = (
+                WG * v_wg + B * v_b + purple_value
+                + gold_value + max(remaining_r, 0) * v_r
+                + revealed_total_value
+            )
             return {
                 "purple_grids": a_p, "gold_grids": a_g, "red_grids": a_r,
                 "gold_red_grids": gold_red, "estimated_value": value,
@@ -283,16 +298,19 @@ class GridActuarial(StrategyBase):
             err = None
             if gold_red < 0:
                 err = f"金红剩余 = {gold_red} < 0, 紫色已超额"
+            # 剩余金红格数 = gold_red - 已显示金 - 已显示红, 按 v_jr 计;
+            # 再加上已显示物品的总价值
             mixed_remaining = gold_red - owned_g - owned_r
             if err is None and mixed_remaining < 0:
                 err = (
-                    f"已有金({owned_g}) + 已有红({owned_r}) = {owned_g + owned_r} "
+                    f"已显示金({owned_g}) + 已显示红({owned_r}) = {owned_g + owned_r} "
                     f"超过金红剩余 {gold_red}"
                 )
+            revealed_total_value = _revealed_total_value(inputs)
             value = (
                 WG * v_wg + B * v_b + purple_value
-                + owned_g * v_g + owned_r * v_r
                 + max(mixed_remaining, 0) * v_jr
+                + revealed_total_value
             )
             return {
                 "purple_grids": a_p, "gold_grids": owned_g, "red_grids": owned_r,
@@ -310,6 +328,17 @@ def _empty_output(errors: list[str], warnings: list[str]) -> dict[str, Any]:
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def _revealed_total_value(inputs: dict[str, Any]) -> int:
+    items = inputs.get("revealed_items") or []
+    total = 0
+    for it in items:
+        try:
+            total += int(it.get("value") or 0)
+        except (TypeError, ValueError):
+            continue
+    return total
 
 
 def _to_int(v: Any) -> int | None:
